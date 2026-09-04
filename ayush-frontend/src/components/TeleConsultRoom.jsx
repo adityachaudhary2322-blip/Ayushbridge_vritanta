@@ -22,6 +22,16 @@ const STAGE_LABEL = {
 };
 const IVR_PROMPT = 'नमस्ते! हिंदी के लिए 1 दबाएं या बोलें। For English, press or say 2.';
 
+// Tap-to-answer fallback chips per stage (noisy room / mic failure escape hatch).
+const TELE_CHIPS = {
+  ageGender: { en: ['Male', 'Female', 'Other'], hi: ['पुरुष (Male)', 'महिला (Female)', 'अन्य (Other)'] },
+  complaint: { en: ['Abdominal pain', 'Acidity / Heartburn', 'Joint pain', 'Headache & fatigue'], hi: ['पेट दर्द', 'खट्टी डकार व जलन', 'जोड़ों का दर्द', 'सिरदर्द व थकान'] },
+  agni: { en: ['Low appetite (Manda)', 'Normal (Sama)', 'Constipation (Krura)', 'Acidity (Amla)'], hi: ['भूख कम (Manda)', 'पाचन ठीक (Sama)', 'कब्ज (Krura)', 'खट्टी डकारें (Amla)'] },
+  sleep: { en: ['Sound Sleep', 'Disturbed Sleep', 'Insomnia / High Stress'], hi: ['गहरी नींद (Sound)', 'नींद में बाधा (Disturbed)', 'अनिद्रा व तनाव (Insomnia)'] },
+  energy: { en: ['Normal Energy', 'Sluggish / Lethargic', 'Severe Weakness'], hi: ['ऊर्जा सामान्य (Normal)', 'भारीपन व सुस्ती (Lethargy)', 'अत्यधिक कमजोरी (Fatigue)'] },
+  history: { en: ['No Pre-existing Conditions', 'Hypertension / High BP', 'Diabetes / Sugar', 'Respiratory / Allergy'], hi: ['कोई पुरानी बीमारी नहीं', 'उच्च रक्तचाप (BP)', 'मधुमेह (Diabetes)', 'सांस/एलर्जी'] },
+};
+
 const PRIORITY_CONFIG = {
   P1: { bg: 'bg-red-600', label: 'Critical', icon: 'emergency' },
   P2: { bg: 'bg-orange-500', label: 'Urgent', icon: 'priority_high' },
@@ -68,6 +78,9 @@ export default function TeleConsultRoom() {
   const [caption, setCaption] = useState('');
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState('');
+  const [voiceError, setVoiceError] = useState('');   // distinct API/mic error banner
+  const [liveVolume, setLiveVolume] = useState(0);     // 0..1 live mic VU meter
+  const [typedAnswer, setTypedAnswer] = useState('');
   const [stage, setStage] = useState('name');
   const [fields, setFields] = useState({ name: '', age: '', gender: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
   const [triageResult, setTriageResult] = useState(null);
@@ -80,6 +93,7 @@ export default function TeleConsultRoom() {
   const langRef = useRef('en');
   const langChosenRef = useRef(false);
   const stageRef = useRef('name');
+  const stageTokenRef = useRef(0);
   const fieldsRef = useRef({ name: '', age: '', gender: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
 
   // Audio-singleton + StrictMode guards
@@ -90,10 +104,11 @@ export default function TeleConsultRoom() {
   const earpieceSinkRef = useRef(null);
 
   const alive = (run) => isMountedRef.current && runIdRef.current === run;
+  const stageAlive = (token) => isMountedRef.current && stageTokenRef.current === token;
 
-  const netErr = () => setError(langRef.current === 'hi'
-    ? 'नेटवर्क समस्या — कृपया जांचें कि सर्वर चल रहा है।'
-    : 'Network issue — verify the server is running.');
+  const netErr = () => setVoiceError(langRef.current === 'hi'
+    ? '⚠️ वॉयस सेवा त्रुटि — कृपया दोबारा प्रयास करें या नीचे टाइप/टैप करें।'
+    : '⚠️ Voice Service Error reaching TTS — retry or type/tap your answer below.');
 
   const startWebcam = async () => {
     try {
@@ -121,18 +136,17 @@ export default function TeleConsultRoom() {
     });
   };
 
-  const listenOnce = ({ silenceMs = 1500, maxMs = 8000, langCode } = {}) => new Promise((resolve) => {
+  // Resolves to { status: 'ok'|'empty'|'error', text, code, msg }
+  const listenOnce = ({ initialWaitMs = 5000, trailingSilenceMs = 2000, maxRecordMs = 9000, langCode } = {}) => new Promise((resolve) => {
     setBotStatus('listening');
     setTranscript('');
+    setLiveVolume(0);
     recordUntilSilence({
-      silenceMs, maxMs, langCode,
-      onStop: () => setBotStatus('thinking'),
-      onResult: (t) => { setTranscript(t); resolve(t); },
-      onError: (code) => {
-        if (code === 'not-allowed') setError(langRef.current === 'hi' ? 'माइक्रोफ़ोन की अनुमति चाहिए।' : 'Microphone permission needed.');
-        else if (code === 'network') netErr();
-        resolve(null);
-      },
+      initialWaitMs, trailingSilenceMs, maxRecordMs, langCode,
+      onVolumeChange: (v) => setLiveVolume(v),
+      onStop: () => { setBotStatus('thinking'); setLiveVolume(0); },
+      onResult: (t) => resolve({ status: t ? 'ok' : 'empty', text: t }),
+      onError: (code, msg) => resolve({ status: 'error', code, msg }),
     }).then((rec) => { recRef.current = rec; });
   });
 
@@ -142,8 +156,10 @@ export default function TeleConsultRoom() {
     langChosenRef.current = true;
     langRef.current = l;
     setLang(l);
+    setVoiceError('');
     stopRec(); // cancel any in-progress voice detection for this step
     setBotStatus('idle');
+    startInterview(); // begin the clinical interview in the chosen language
   };
 
   // Speaker <-> earpiece routing toggle
@@ -222,40 +238,83 @@ export default function TeleConsultRoom() {
     }
   };
 
+  // IVR: prompt + listen for a spoken 1/2. Buttons (chooseLang) can fire any time.
   const runIVR = async (run) => {
     setPhase('ivr');
     await speak(IVR_PROMPT, 'hi');
     let tries = 0;
     while (!langChosenRef.current && tries < 2 && alive(run)) {
-      const t = await listenOnce({ langCode: 'unknown', maxMs: 7000 });
-      if (langChosenRef.current) break;
-      const l = t && detectLangChoice(t);
-      if (l) { chooseLang(l); break; }
+      const r = await listenOnce({ langCode: 'unknown', maxRecordMs: 7000 });
+      if (langChosenRef.current) return;      // a button was tapped mid-listen
+      if (r.status === 'error') {
+        setVoiceError(langRef.current === 'hi'
+          ? '⚠️ वॉयस सेवा त्रुटि — कृपया नीचे 1 या 2 बटन दबाएं।'
+          : '⚠️ Voice Service Error — please press button 1 or 2 below.');
+        return; // buttons remain; do not auto-default on an API error
+      }
+      const l = r.text && detectLangChoice(r.text);
+      if (l) { chooseLang(l); return; }
       tries++;
       if (!langChosenRef.current && tries < 2 && alive(run)) {
         await speak('कृपया 1 या 2 कहें। Please say 1 or 2.', 'hi');
       }
     }
-    if (!langChosenRef.current) chooseLang('hi'); // sensible default
+    if (!langChosenRef.current && alive(run)) chooseLang('hi'); // sensible default after silence
   };
 
-  const runInterview = async (run) => {
-    setPhase('interview');
-    const code = langRef.current === 'hi' ? 'hi-IN' : 'en-IN';
-    for (const stageKey of STAGES) {
-      if (!alive(run)) return;
-      stageRef.current = stageKey; setStage(stageKey);
-      let got = null, tries = 0;
-      while (got == null && tries < 2 && alive(run)) {
-        await speak(tries === 0 ? Q[stageKey][langRef.current] : REPROMPT[langRef.current]);
-        if (!alive(run)) return;
-        got = await listenOnce({ langCode: code });
-        tries++;
-      }
-      if (got) storeAnswer(stageKey, got);
-    }
-    if (alive(run)) await submitTriage();
+  // ── Resumable interview stage machine (voice OR chip/text advances any step) ────
+  const acceptAnswer = (stageKey, text) => {
+    const t = (text || '').trim();
+    if (!t) return;
+    stopRec();
+    stopSarvamAudio();
+    setLiveVolume(0); setVoiceError(''); setTypedAnswer('');
+    storeAnswer(stageKey, t);
+    setTranscript(t);
+    const next = STAGES[STAGES.indexOf(stageKey) + 1];
+    if (next) goToStage(next);
+    else submitTriage();
   };
+
+  async function askAndListen(stageKey, attempt, token) {
+    if (!stageAlive(token)) return;
+    const code = langRef.current === 'hi' ? 'hi-IN' : 'en-IN';
+    await speak(attempt === 0 ? Q[stageKey][langRef.current] : REPROMPT[langRef.current]);
+    if (!stageAlive(token)) return;
+    const r = await listenOnce({ langCode: code });
+    if (!stageAlive(token)) return; // a chip/text tap already advanced
+    if (r.status === 'ok') { acceptAnswer(stageKey, r.text); return; }
+    if (r.status === 'error') {
+      setBotStatus('idle');
+      if (r.code === 'not-allowed') {
+        setVoiceError(langRef.current === 'hi'
+          ? '⚠️ माइक्रोफ़ोन अनुमति नहीं मिली — कृपया अनुमति दें, या नीचे टाइप/टैप करें।'
+          : '⚠️ Microphone permission denied — allow it, or type/tap your answer below.');
+      } else {
+        setVoiceError(langRef.current === 'hi'
+          ? `⚠️ वॉयस सेवा त्रुटि: ${r.msg || 'unknown'}. दोबारा प्रयास करें या नीचे टाइप/टैप करें।`
+          : `⚠️ Voice Service Error: ${r.msg || 'unknown'}. Retry or type/tap your answer below.`);
+      }
+      return;
+    }
+    // empty → the patient didn't speak / not recognized → "speak louder" + retry once
+    if (attempt < 2) { askAndListen(stageKey, attempt + 1, token); }
+    else { setBotStatus('idle'); }
+  }
+
+  function goToStage(stageKey) {
+    const token = ++stageTokenRef.current;
+    stageRef.current = stageKey; setStage(stageKey);
+    askAndListen(stageKey, 0, token);
+  }
+
+  function startInterview() {
+    setPhase('interview');
+    goToStage(STAGES[0]);
+  }
+
+  const retryVoice = () => { setVoiceError(''); askAndListen(stageRef.current, 0, stageTokenRef.current); };
+  const submitTyped = () => acceptAnswer(stageRef.current, typedAnswer);
 
   const runFlow = async (run) => {
     for (let c = 5; c >= 1; c--) {
@@ -268,9 +327,7 @@ export default function TeleConsultRoom() {
     setPhase('admitted');
     await wait(1400);
     if (!alive(run)) return;
-    await runIVR(run);
-    if (!alive(run)) return;
-    await runInterview(run);
+    await runIVR(run);   // chooseLang() starts the interview when a language is picked
   };
 
   const endCall = () => {
@@ -346,6 +403,17 @@ export default function TeleConsultRoom() {
             </div>
           </div>
 
+          {/* Live mic VU meter — confirms the mic is capturing sound */}
+          {listening && (
+            <div className="flex items-end gap-1 h-8">
+              {[0.15, 0.4, 0.7, 1.0, 0.7, 0.4, 0.15].map((th, i) => (
+                <div key={i}
+                  className={`w-1.5 rounded-full transition-all duration-75 ${liveVolume >= th ? 'bg-green-400' : 'bg-green-400/25'}`}
+                  style={{ height: `${8 + th * 22}px` }} />
+              ))}
+            </div>
+          )}
+
           {/* Live subtitles */}
           {caption && (
             <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2 items-center">
@@ -401,9 +469,40 @@ export default function TeleConsultRoom() {
           </div>
         )}
 
-        {error && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-red-600/90 text-white rounded-xl px-4 py-2 font-body-sm text-body-sm flex items-center gap-2">
-            <span className="material-symbols-outlined text-[16px]">wifi_off</span>{error}
+        {/* Distinct voice-service error banner (click to retry) */}
+        {voiceError && (
+          <button onClick={retryVoice}
+            className="absolute top-14 left-1/2 -translate-x-1/2 max-w-lg text-left bg-red-600/90 text-white rounded-xl px-4 py-2.5 font-body-sm text-body-sm flex items-start gap-2 hover:bg-red-700/90 transition-colors">
+            <span className="material-symbols-outlined text-[18px] shrink-0 mt-0.5">error</span>
+            <span>{voiceError} <span className="underline">{lang === 'hi' ? 'पुनः प्रयास' : 'Retry'}</span></span>
+          </button>
+        )}
+
+        {/* Interview chip / text fallback — noisy room or mic failure escape hatch */}
+        {phase === 'interview' && !triageResult && (
+          <div className="absolute inset-x-0 bottom-24 flex flex-col items-center gap-2.5 px-4">
+            {TELE_CHIPS[stage] && (
+              <div className="flex flex-wrap items-center justify-center gap-2 max-w-2xl">
+                {(TELE_CHIPS[stage][lang] || TELE_CHIPS[stage].en).map(chip => (
+                  <button key={chip} onClick={() => acceptAnswer(stage, chip)}
+                    className="px-3.5 py-2 rounded-full bg-white/15 hover:bg-primary hover:text-on-primary text-white font-label-md text-label-md backdrop-blur-sm transition-colors">
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="w-full max-w-md flex items-center gap-2">
+              <input
+                value={typedAnswer}
+                onChange={(e) => setTypedAnswer(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') submitTyped(); }}
+                placeholder={lang === 'hi' ? 'शोर हो? यहाँ टाइप करें…' : 'Noisy? Type your answer…'}
+                className="flex-1 h-11 px-4 rounded-xl bg-white/90 text-neutral-900 placeholder:text-neutral-500 font-body-md text-body-md focus:outline-none"
+              />
+              <button onClick={submitTyped} className="h-11 px-4 rounded-xl bg-primary text-on-primary font-label-md text-label-md hover:bg-primary-container transition-colors flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[18px]">send</span>
+              </button>
+            </div>
           </div>
         )}
 

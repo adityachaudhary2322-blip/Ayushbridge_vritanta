@@ -113,89 +113,115 @@ export async function recordAndTranscribe({ onResult, onError, onStart, onStop, 
   }
 }
 
-// Hands-free recorder: auto-stops after `silenceMs` of quiet once speech is
-// detected (or at `maxMs` hard cap). Returns the MediaRecorder so the caller can
-// stop it early on a manual tap. Transcribes via /api/sarvam-stt.
-export async function recordUntilSilence({ onResult, onError, onStart, onStop, silenceMs = 1500, maxMs = 8000, langCode }) {
+// Hands-free recorder with two-stage VAD:
+//   • initialWaitMs   — how long to wait for the user to START speaking
+//   • trailingSilenceMs — stop only AFTER speech, once quiet this long
+//   • maxRecordMs     — hard safety cutoff
+// Callbacks:
+//   • onVolumeChange(0..1) — live VU meter
+//   • onResult(transcript) — transcript string; "" means the user didn't speak / empty
+//   • onError(code, message) — 'api_error' (HTTP/network), 'not-allowed', 'start-failed'
+// Returns the MediaRecorder so the caller can stop it early on a manual tap / chip.
+export async function recordUntilSilence({
+  onResult, onError, onStart, onStop, onVolumeChange,
+  initialWaitMs = 5000, trailingSilenceMs = 2000, maxRecordMs = 9000, langCode,
+}) {
+  let stream;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const chunks = [];
-    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
-
-    // Voice-activity detection via Web Audio RMS
-    let audioCtx, analyser, rafId;
-    let hasSpoken = false;
-    let lastSpeech = 0; // set to performance.now() once VAD starts
-    const startedAt = performance.now();
-    const SPEAK_THRESHOLD = 0.018;
-
-    const cleanupVad = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      if (audioCtx && audioCtx.state !== 'closed') audioCtx.close().catch(() => {});
-    };
-
-    try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const src = audioCtx.createMediaStreamSource(stream);
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 1024;
-      src.connect(analyser);
-      const buf = new Uint8Array(analyser.fftSize);
-      lastSpeech = performance.now();
-
-      const tick = () => {
-        analyser.getByteTimeDomainData(buf);
-        let sum = 0;
-        for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-        const rms = Math.sqrt(sum / buf.length);
-        const now = performance.now();
-        if (rms > SPEAK_THRESHOLD) { hasSpoken = true; lastSpeech = now; }
-        const silentFor = now - lastSpeech;
-        if ((hasSpoken && silentFor > silenceMs) || (now - startedAt > maxMs)) {
-          if (rec.state === 'recording') rec.stop();
-          return;
-        }
-        rafId = requestAnimationFrame(tick);
-      };
-      rafId = requestAnimationFrame(tick);
-    } catch {
-      // VAD unavailable → fall back to hard maxMs stop only
-      setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, maxMs);
-    }
-
-    rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-
-    rec.onstop = async () => {
-      cleanupVad();
-      stream.getTracks().forEach(t => t.stop());
-      onStop?.();
-      const blob = new Blob(chunks, { type: mime || 'audio/webm' });
-      if (blob.size < 500) { onError?.('empty'); return; }
-      const fd = new FormData();
-      fd.append('file', blob, 'voice.webm');
-      if (langCode) fd.append('language_code', langCode);
-      try {
-        const res = await fetch('/api/sarvam-stt', { method: 'POST', body: fd });
-        if (!res.ok) throw new Error(`STT HTTP ${res.status}`);
-        const data = await res.json();
-        if (data.transcript?.trim()) onResult(data.transcript.trim());
-        else onError?.('no-transcript');
-      } catch (err) {
-        console.warn('[recordUntilSilence] stt:', err.message);
-        onError?.('network');
-      }
-    };
-
-    onStart?.();
-    rec.start(250);
-    return rec;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
-    onError?.(err.name === 'NotAllowedError' ? 'not-allowed' : 'start-failed');
+    onError?.(err.name === 'NotAllowedError' ? 'not-allowed' : 'start-failed', err.message);
     return null;
   }
+
+  const chunks = [];
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+
+  let audioCtx, analyser, intervalId, dataArray, bufferLength;
+  let hasSpoken = false;
+  const startTime = Date.now();
+  let lastSpokenTime = startTime;
+  const SPEAK_THRESHOLD = 0.012; // sensitive threshold for speech
+
+  const cleanupVad = () => {
+    if (intervalId) clearInterval(intervalId);
+    if (audioCtx && audioCtx.state !== 'closed') audioCtx.close().catch(() => {});
+  };
+
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') { await audioCtx.resume(); }
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    src.connect(analyser);
+    bufferLength = analyser.fftSize;
+    dataArray = new Uint8Array(bufferLength);
+
+    intervalId = setInterval(() => {
+      analyser.getByteTimeDomainData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        const norm = (dataArray[i] - 128) / 128;
+        sum += norm * norm;
+      }
+      const rms = Math.sqrt(sum / bufferLength);
+      onVolumeChange?.(Math.min(1.0, rms * 5)); // scaled for the UI meter
+
+      if (rms > SPEAK_THRESHOLD) { hasSpoken = true; lastSpokenTime = Date.now(); }
+
+      const now = Date.now();
+      if (hasSpoken && (now - lastSpokenTime > trailingSilenceMs)) {
+        if (rec.state === 'recording') rec.stop();
+      } else if (!hasSpoken && (now - startTime > initialWaitMs)) {
+        if (rec.state === 'recording') rec.stop();       // never started speaking
+      } else if (now - startTime > maxRecordMs) {
+        if (rec.state === 'recording') rec.stop();       // hard cutoff
+      }
+    }, 100);
+  } catch {
+    // VAD unavailable → hard cutoff only
+    setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, maxRecordMs);
+  }
+
+  rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+  rec.onstop = async () => {
+    cleanupVad();
+    onVolumeChange?.(0);
+    stream.getTracks().forEach(t => t.stop());
+    onStop?.();
+
+    const blob = new Blob(chunks, { type: mime || 'audio/webm' });
+    // The user never actually spoke → empty transcript (NOT an error)
+    if (!hasSpoken || blob.size < 500) { onResult?.(''); return; }
+
+    const fd = new FormData();
+    fd.append('file', blob, 'voice.webm');
+    if (langCode) fd.append('language_code', langCode);
+    try {
+      const res = await fetch('/api/sarvam-stt', { method: 'POST', body: fd });
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { const j = await res.json(); msg = j.error || msg; } catch { /* ignore */ }
+        console.error('[recordUntilSilence] api_error:', msg);
+        onError?.('api_error', msg);
+        return;
+      }
+      const data = await res.json();
+      onResult?.(data.transcript?.trim() || ''); // "" = spoke but nothing recognized
+    } catch (err) {
+      console.error('[recordUntilSilence] network:', err.message);
+      onError?.('api_error', err.message);
+    }
+  };
+
+  onStart?.();
+  rec.start(250);
+  return rec;
 }
 
 // Parse conversation slots for display chips

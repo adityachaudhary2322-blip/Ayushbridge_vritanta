@@ -29,6 +29,17 @@ const PRIORITY_CONFIG = {
   P4: { bg: 'bg-green-600', label: 'Routine', icon: 'check_circle' },
 };
 
+// Tap-to-answer fallback chips per stage (noisy room / mic failure escape hatch).
+// name & mobile are free-text → covered by the always-present text input.
+const KIOSK_CHIPS = {
+  ageGender: { en: ['Male', 'Female', 'Other'], hi: ['पुरुष (Male)', 'महिला (Female)', 'अन्य (Other)'] },
+  complaint: { en: ['Abdominal pain', 'Acidity / Heartburn', 'Joint pain', 'Headache & fatigue'], hi: ['पेट दर्द', 'खट्टी डकार व जलन', 'जोड़ों का दर्द', 'सिरदर्द व थकान'] },
+  agni: { en: ['Low appetite (Manda)', 'Normal (Sama)', 'Constipation (Krura)', 'Acidity (Amla)'], hi: ['भूख कम (Manda)', 'पाचन ठीक (Sama)', 'कब्ज (Krura)', 'खट्टी डकारें (Amla)'] },
+  sleep: { en: ['Sound Sleep', 'Disturbed Sleep', 'Insomnia / High Stress'], hi: ['गहरी नींद (Sound)', 'नींद में बाधा (Disturbed)', 'अनिद्रा व तनाव (Insomnia)'] },
+  energy: { en: ['Normal Energy', 'Sluggish / Lethargic', 'Severe Weakness'], hi: ['ऊर्जा सामान्य (Normal)', 'भारीपन व सुस्ती (Lethargy)', 'अत्यधिक कमजोरी (Fatigue)'] },
+  history: { en: ['No Pre-existing Conditions', 'Hypertension / High BP', 'Diabetes / Sugar', 'Respiratory / Allergy'], hi: ['कोई पुरानी बीमारी नहीं', 'उच्च रक्तचाप (BP)', 'मधुमेह (Diabetes)', 'सांस/एलर्जी'] },
+};
+
 function parseGender(text) {
   const tl = text.toLowerCase();
   if (/female|महिला|स्त्री|औरत|लड़की|mahila|ladki|woman|girl/.test(tl)) return 'Female';
@@ -56,12 +67,16 @@ export default function TouchlessKiosk() {
   useEffect(() => { langRef.current = lang; }, [lang]);
 
   const [started, setStarted] = useState(false);
-  const [stage, setStage] = useState('name');       // 'name'…'agni' | 'complete'
+  const [stage, setStage] = useState('name');       // 'name'…'history' | 'complete'
   const stageRef = useRef('name');
+  const stageTokenRef = useRef(0);                    // bumped on every stage change (voice/chip guard)
   const [botStatus, setBotStatus] = useState('idle'); // idle|speaking|listening|thinking
   const [caption, setCaption] = useState('');         // AI's spoken question
   const [transcript, setTranscript] = useState('');   // patient's live transcript
   const [error, setError] = useState('');
+  const [liveVolume, setLiveVolume] = useState(0);    // 0..1 live mic VU meter
+  const [voiceError, setVoiceError] = useState('');   // distinct API/mic error banner
+  const [typedAnswer, setTypedAnswer] = useState('');
 
   const fieldsRef = useRef({ name: '', age: '', gender: '', mobile: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
   const [fields, setFields] = useState(fieldsRef.current);
@@ -89,31 +104,29 @@ export default function TouchlessKiosk() {
   const speak = useCallback(async (text) => {
     setBotStatus('speaking');
     setCaption(text);
-    setError('');
-    await sarvamTTS(text, langRef.current, { onNetworkError: netErr });
-  }, [netErr]);
+    await sarvamTTS(text, langRef.current, {
+      onNetworkError: () => setVoiceError(langRef.current === 'hi'
+        ? '⚠️ वॉयस सेवा त्रुटि — कृपया दोबारा प्रयास करें या नीचे टाइप/टैप करें।'
+        : '⚠️ Voice Service Error reaching TTS — retry or type/tap your answer below.'),
+    });
+  }, []);
 
+  // Resolves to { status: 'ok'|'empty'|'error', text, code, msg }
   const listen = useCallback(() => new Promise((resolve) => {
     setBotStatus('listening');
     setTranscript('');
+    setLiveVolume(0);
     recordUntilSilence({
-      silenceMs: 1500,   // stop 1.5s after the patient goes quiet
-      maxMs: 8000,       // hard cap so it never hangs
+      initialWaitMs: 5000,      // up to 5s to BEGIN speaking
+      trailingSilenceMs: 2000,  // stop 2s after they go quiet
+      maxRecordMs: 9000,        // hard safety cutoff
       langCode: langRef.current === 'hi' ? 'hi-IN' : 'en-IN',
-      onStop: () => setBotStatus('thinking'),
-      onResult: (t) => { setTranscript(t); resolve(t); },
-      onError: (code) => {
-        if (code === 'not-allowed') {
-          setError(langRef.current === 'hi'
-            ? 'माइक्रोफ़ोन की अनुमति चाहिए — कृपया अनुमति दें और पुनः प्रयास करें।'
-            : 'Microphone permission needed — please allow it and try again.');
-        } else if (code === 'network') {
-          netErr();
-        }
-        resolve(null);
-      },
+      onVolumeChange: (v) => setLiveVolume(v),
+      onStop: () => { setBotStatus('thinking'); setLiveVolume(0); },
+      onResult: (t) => resolve({ status: t ? 'ok' : 'empty', text: t }),
+      onError: (code, msg) => resolve({ status: 'error', code, msg }),
     }).then((rec) => { recRef.current = rec; });
-  }), [netErr]);
+  }), []);
 
   const storeAnswer = useCallback((stageKey, text) => {
     const f = { ...fieldsRef.current };
@@ -170,23 +183,54 @@ export default function TouchlessKiosk() {
     }
   }, [speak, sessionId]);
 
-  // ── Hands-free conversation driver ────────────────────────────────────────────
-  const runConversation = useCallback(async () => {
-    for (const stageKey of STAGES) {
-      if (!activeRef.current) return;
-      stageRef.current = stageKey; setStage(stageKey);
-      let got = null, tries = 0;
-      while (got == null && tries < 2 && activeRef.current) {
-        await speak(tries === 0 ? Q[stageKey][langRef.current] : REPROMPT[langRef.current]);
-        if (!activeRef.current) return;
-        got = await listen();
-        tries++;
+  // ── Resumable stage machine (voice OR chip/text can advance any step) ──────────
+  const isAlive = (token) => activeRef.current && stageTokenRef.current === token;
+
+  // acceptAnswer is the single entry point for BOTH voice results and chip/text taps
+  const acceptAnswer = (stageKey, text) => {
+    const t = (text || '').trim();
+    if (!t) return;
+    if (recRef.current?.state === 'recording') recRef.current.stop();
+    stopSarvamAudio();
+    setLiveVolume(0); setVoiceError(''); setTypedAnswer('');
+    storeAnswer(stageKey, t);
+    setTranscript(t);
+    const next = STAGES[STAGES.indexOf(stageKey) + 1];
+    if (next) goToStage(next);
+    else submitTriage();
+  };
+
+  async function askAndListen(stageKey, attempt, token) {
+    if (!isAlive(token)) return;
+    await speak(attempt === 0 ? Q[stageKey][langRef.current] : REPROMPT[langRef.current]);
+    if (!isAlive(token)) return;
+    const r = await listen();
+    if (!isAlive(token)) return; // a chip/text tap already advanced the stage
+    if (r.status === 'ok') { acceptAnswer(stageKey, r.text); return; }
+    if (r.status === 'error') {
+      // API / mic failure → explicit banner, DO NOT say "speak louder". Wait for chip/text/retry.
+      setBotStatus('idle');
+      if (r.code === 'not-allowed') {
+        setVoiceError(langRef.current === 'hi'
+          ? '⚠️ माइक्रोफ़ोन अनुमति नहीं मिली — कृपया अनुमति दें, या नीचे टाइप/टैप करें।'
+          : '⚠️ Microphone permission denied — allow it, or type/tap your answer below.');
+      } else {
+        setVoiceError(langRef.current === 'hi'
+          ? `⚠️ वॉयस सेवा त्रुटि: ${r.msg || 'unknown'}. दोबारा प्रयास करें या नीचे टाइप/टैप करें।`
+          : `⚠️ Voice Service Error: ${r.msg || 'unknown'}. Retry or type/tap your answer below.`);
       }
-      if (!activeRef.current) return;
-      if (got) storeAnswer(stageKey, got);
+      return;
     }
-    if (activeRef.current) await submitTriage();
-  }, [speak, listen, storeAnswer, submitTriage]);
+    // status === 'empty' → the patient didn't speak / not recognized → "speak louder" and retry
+    if (attempt < 2) { askAndListen(stageKey, attempt + 1, token); }
+    else { setBotStatus('idle'); } // stop auto-retrying; chips/text remain available
+  }
+
+  async function goToStage(stageKey) {
+    const token = ++stageTokenRef.current;
+    stageRef.current = stageKey; setStage(stageKey);
+    await askAndListen(stageKey, 0, token);
+  }
 
   // ── Start / stop ──────────────────────────────────────────────────────────────
   const begin = () => {
@@ -199,14 +243,22 @@ export default function TouchlessKiosk() {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (Ctx) { const ctx = new Ctx(); ctx.resume?.().catch(() => {}); }
     } catch { /* ignore */ }
-    runConversation();
+    goToStage(STAGES[0]);
   };
 
+  // Manual "done speaking" — end the current recording now
   const tapMic = () => {
-    if (botStatus === 'listening' && recRef.current?.state === 'recording') {
-      recRef.current.stop();
-    }
+    if (recRef.current?.state === 'recording') recRef.current.stop();
   };
+
+  // Retry voice after an API/mic error banner
+  const retryVoice = () => {
+    setVoiceError('');
+    askAndListen(stageRef.current, 0, stageTokenRef.current);
+  };
+
+  // Chip / typed answer → advance the current stage
+  const submitTyped = () => acceptAnswer(stageRef.current, typedAnswer);
 
   const resetKiosk = () => {
     activeRef.current = false;
@@ -214,8 +266,9 @@ export default function TouchlessKiosk() {
     if (recRef.current?.state === 'recording') recRef.current.stop();
     fieldsRef.current = { name: '', age: '', gender: '', mobile: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' };
     setFields(fieldsRef.current);
-    setTriageResult(null); setStage('name'); stageRef.current = 'name';
+    setTriageResult(null); setStage('name'); stageRef.current = 'name'; stageTokenRef.current = 0;
     setCaption(''); setTranscript(''); setBotStatus('idle'); setStarted(false);
+    setLiveVolume(0); setVoiceError(''); setTypedAnswer('');
   };
 
   // QR polling + cleanup
@@ -314,6 +367,22 @@ export default function TouchlessKiosk() {
                 </p>
               </div>
 
+              {/* Live mic VU meter — visual confirmation the mic is capturing sound */}
+              {listening && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="flex items-end gap-1 h-8">
+                    {[0.15, 0.35, 0.6, 0.85, 1.0, 0.85, 0.6, 0.35, 0.15].map((th, i) => (
+                      <div key={i}
+                        className={`w-1.5 rounded-full transition-all duration-75 ${liveVolume >= th ? 'bg-green-500' : 'bg-green-500/20'}`}
+                        style={{ height: `${8 + th * 24}px`, opacity: liveVolume >= th ? 1 : 0.4 }} />
+                    ))}
+                  </div>
+                  <span className="font-label-sm text-label-sm text-green-600">
+                    {liveVolume > 0.05 ? (lang === 'hi' ? '🎙️ आवाज़ मिल रही है' : '🎙️ Mic is picking up sound') : (lang === 'hi' ? 'बोलिए…' : 'Speak now…')}
+                  </span>
+                </div>
+              )}
+
               {/* Live captions */}
               <div className="w-full max-w-2xl flex flex-col gap-3">
                 <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm flex items-start gap-3 min-h-[76px]">
@@ -332,10 +401,12 @@ export default function TouchlessKiosk() {
                 )}
               </div>
 
-              {error && (
-                <div className="bg-error-container/30 text-on-error-container rounded-xl px-4 py-2.5 font-body-sm text-body-sm flex items-center gap-2">
-                  <span className="material-symbols-outlined text-error text-[16px]">wifi_off</span>{error}
-                </div>
+              {voiceError && (
+                <button onClick={retryVoice}
+                  className="max-w-2xl text-left bg-error-container/40 text-on-error-container rounded-xl px-4 py-3 font-body-md text-body-md flex items-start gap-2.5 hover:bg-error-container/60 transition-colors shadow-sm">
+                  <span className="material-symbols-outlined text-error text-[20px] shrink-0 mt-0.5">error</span>
+                  <span>{voiceError} <span className="underline font-medium">{lang === 'hi' ? 'पुनः प्रयास करें' : 'Click to retry'}</span></span>
+                </button>
               )}
 
               {/* Controls */}
@@ -360,13 +431,42 @@ export default function TouchlessKiosk() {
 
               {/* Progress dots */}
               {started && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-center">
                   {STAGES.map((s, i) => (
                     <div key={s} className="flex flex-col items-center gap-1">
                       <div className={`h-2.5 rounded-full transition-all ${i < stageIdx ? 'w-8 bg-primary' : i === stageIdx ? 'w-8 bg-primary/60' : 'w-2.5 bg-surface-container-high'}`} />
                       <span className={`font-label-sm text-label-sm ${i === stageIdx ? 'text-primary font-semibold' : 'text-on-surface-variant'}`}>{STAGE_LABEL[s][lang]}</span>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Tap-to-answer fallback — always available so no one gets stuck */}
+              {started && (
+                <div className="w-full max-w-2xl flex flex-col items-center gap-2.5">
+                  {KIOSK_CHIPS[stage] && (
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      {(KIOSK_CHIPS[stage][lang] || KIOSK_CHIPS[stage].en).map(chip => (
+                        <button key={chip} onClick={() => acceptAnswer(stage, chip)}
+                          className="px-3.5 py-2 rounded-full bg-surface-container-highest hover:bg-primary hover:text-on-primary text-on-surface font-label-md text-label-md shadow-sm transition-colors">
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="w-full flex items-center gap-2">
+                    <input
+                      value={typedAnswer}
+                      onChange={(e) => setTypedAnswer(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') submitTyped(); }}
+                      placeholder={lang === 'hi' ? 'शोर हो? यहाँ टाइप करके उत्तर दें…' : 'Noisy? Type your answer here…'}
+                      className="flex-1 h-11 px-4 rounded-xl bg-surface-container-low text-on-surface placeholder:text-on-surface-variant font-body-md text-body-md focus:outline-none focus:bg-surface-container"
+                    />
+                    <button onClick={submitTyped} className="h-11 px-4 rounded-xl bg-primary text-on-primary font-label-md text-label-md shadow-sm hover:bg-primary-container transition-colors flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[18px]">send</span>
+                      {lang === 'hi' ? 'भेजें' : 'Send'}
+                    </button>
+                  </div>
                 </div>
               )}
             </>

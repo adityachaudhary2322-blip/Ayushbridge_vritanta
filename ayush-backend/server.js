@@ -146,19 +146,24 @@ app.post('/api/sarvam-tts', async (req, res) => {
 app.post('/api/sarvam-stt', upload.any(), async (req, res) => {
   try {
     const uploadedFile = req.files?.[0];
+    console.log(`[STT Ingestion] Received file of size ${uploadedFile?.size} bytes, mimetype: ${uploadedFile?.mimetype}`);
     if (!uploadedFile) {
       console.error('No audio file received in /api/sarvam-stt');
       return res.status(400).json({ success: false, error: 'No audio file uploaded' });
+    }
+    if (uploadedFile.size < 500) {
+      console.warn(`[STT Ingestion] Audio buffer too small (${uploadedFile.size} bytes) — treating as silent`);
+      return res.status(400).json({ success: false, error: 'Audio buffer too small or silent' });
     }
     if (!SARVAM_KEY) return res.status(503).json({ success: false, error: 'SARVAM_API_KEY not configured' });
 
     // 'unknown' lets Saaras auto-detect Hindi/English; caller may override.
     const lang = req.body?.language_code || 'unknown';
     const formData = new FormData();
-    const audioBlob = new Blob([uploadedFile.buffer], { type: uploadedFile.mimetype || 'audio/webm' });
+    const audioBlob = new Blob([uploadedFile.buffer], { type: 'audio/webm' });
 
     // Sarvam strictly requires the field name 'file'
-    formData.append('file', audioBlob, 'recording.webm');
+    formData.append('file', audioBlob, 'audio.webm');
     formData.append('model', 'saaras:v3');
     formData.append('mode', 'transcribe');
     formData.append('language_code', lang);
@@ -169,12 +174,13 @@ app.post('/api/sarvam-stt', upload.any(), async (req, res) => {
       body: formData,
     });
 
-    const data = await sarvamResp.json().catch(() => ({}));
     if (!sarvamResp.ok) {
-      console.error('Sarvam STT Error:', sarvamResp.status, data);
-      return res.status(sarvamResp.status).json({ success: false, error: data });
+      const errText = await sarvamResp.text();
+      console.error(`[Sarvam STT Error ${sarvamResp.status}]:`, errText);
+      return res.status(sarvamResp.status).json({ success: false, error: `Sarvam API error (${sarvamResp.status}): ${errText}` });
     }
 
+    const data = await sarvamResp.json().catch(() => ({}));
     console.log('Captured Patient Transcript:', data.transcript);
     return res.json({ success: true, transcript: data.transcript || '' });
   } catch (err) {
