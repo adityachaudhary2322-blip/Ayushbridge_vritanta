@@ -1,17 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), basicSsl()],
   server: {
-    port: 5173,
-    host: true, // expose on LAN so phones can open the /mobile-scan QR link
+    host: true,
+    https: true,
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
-      }
-    }
-  }
+      },
+    },
+  },
 });

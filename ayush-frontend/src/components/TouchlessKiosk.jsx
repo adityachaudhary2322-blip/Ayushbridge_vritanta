@@ -3,7 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam';
 
-const STAGES = ['name', 'ageGender', 'mobile', 'complaint', 'agni', 'sleep', 'energy', 'history'];
+const STAGES = ['name', 'ageGender', 'mobile', 'complaint', 'has_documents', 'agni', 'sleep', 'energy', 'history'];
+
+const DOC_Q = {
+  en: 'Do you have any past prescription or lab test report you would like to scan?',
+  hi: 'क्या आपके पास कोई पुरानी डॉक्टर की पर्ची या लैब रिपोर्ट है जिसे आप अपलोड करना चाहते हैं?',
+};
+function detectDocIntent(text) {
+  const tl = (text || '').toLowerCase();
+  if (/हाँ|हां|haan|\bha\b|\byes\b|scan|पर्ची|पर्चा|pardi|pardhi|report|रिपोर्ट/.test(tl)) return 'yes';
+  if (/नहीं|नही|nahi|nahin|\bno\b|skip|आगे|छोड़/.test(tl)) return 'no';
+  return null;
+}
 
 const Q = {
   name:      { en: 'Namaste! Welcome to AYUSH Swasthya Sahayak. Please say your full name.',           hi: 'नमस्ते! आयुष स्वास्थ्य सहायक में आपका स्वागत है। कृपया अपना पूरा नाम बोलें।' },
@@ -18,7 +29,8 @@ const Q = {
 const REPROMPT = { en: 'Please speak a bit louder.', hi: 'कृपया थोड़ा ज़ोर से बोलें।' };
 const STAGE_LABEL = {
   name: { en: 'Name', hi: 'नाम' }, ageGender: { en: 'Age & Gender', hi: 'उम्र व लिंग' },
-  mobile: { en: 'Mobile', hi: 'मोबाइल' }, complaint: { en: 'Complaint', hi: 'तकलीफ' }, agni: { en: 'Agni / Koshtha', hi: 'अग्नि / कोष्ठ' },
+  mobile: { en: 'Mobile', hi: 'मोबाइल' }, complaint: { en: 'Complaint', hi: 'तकलीफ' },
+  has_documents: { en: 'Documents', hi: 'दस्तावेज़' }, agni: { en: 'Agni / Koshtha', hi: 'अग्नि / कोष्ठ' },
   sleep: { en: 'Sleep & Stress', hi: 'निद्रा व मानस' }, energy: { en: 'Energy & Vitality', hi: 'बल व ऊर्जा' }, history: { en: 'Chronic History', hi: 'पुरानी बीमारी' },
 };
 
@@ -77,6 +89,8 @@ export default function TouchlessKiosk() {
   const [liveVolume, setLiveVolume] = useState(0);    // 0..1 live mic VU meter
   const [voiceError, setVoiceError] = useState('');   // distinct API/mic error banner
   const [typedAnswer, setTypedAnswer] = useState('');
+  const [docChoice, setDocChoice] = useState('none'); // 'none' | 'ask' | 'yes' (document inquiry stage)
+  const docAdvancedRef = useRef(false);               // guard the upload auto-advance
 
   const fieldsRef = useRef({ name: '', age: '', gender: '', mobile: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
   const [fields, setFields] = useState(fieldsRef.current);
@@ -229,8 +243,42 @@ export default function TouchlessKiosk() {
   async function goToStage(stageKey) {
     const token = ++stageTokenRef.current;
     stageRef.current = stageKey; setStage(stageKey);
+    if (stageKey === 'has_documents') { await runDocStage(token); return; }
     await askAndListen(stageKey, 0, token);
   }
+
+  const advanceFromDocs = () => {
+    setDocChoice('none');
+    const next = STAGES[STAGES.indexOf('has_documents') + 1];
+    if (next) goToStage(next); else submitTriage();
+  };
+
+  // Document inquiry: Yes → show QR, No → skip to Agni/Koshtha
+  async function runDocStage(token) {
+    docAdvancedRef.current = false;
+    setDocChoice('ask');
+    setTranscript('');
+    await speak(DOC_Q[langRef.current]);
+    if (!isAlive(token)) return;
+    const r = await listen();
+    if (!isAlive(token)) return;
+    if (r.status === 'ok') {
+      const intent = detectDocIntent(r.text);
+      if (intent === 'yes') { docYes(); return; }
+      if (intent === 'no') { docNo(); return; }
+      setBotStatus('idle'); return;        // unclear → wait for a button
+    }
+    if (r.status === 'error') {
+      setBotStatus('idle');
+      setVoiceError(langRef.current === 'hi'
+        ? '⚠️ वॉयस सेवा त्रुटि — कृपया नीचे बटन दबाएं।'
+        : '⚠️ Voice Service Error — please tap a button below.');
+      return;
+    }
+    setBotStatus('idle');                  // empty → wait for a button
+  }
+  const docYes = () => { stopRec(); stopSarvamAudio(); setLiveVolume(0); setVoiceError(''); docAdvancedRef.current = false; setDocChoice('yes'); setBotStatus('idle'); };
+  const docNo = () => { stopRec(); stopSarvamAudio(); setLiveVolume(0); setVoiceError(''); advanceFromDocs(); };
 
   // ── Start / stop ──────────────────────────────────────────────────────────────
   const begin = () => {
@@ -254,11 +302,22 @@ export default function TouchlessKiosk() {
   // Retry voice after an API/mic error banner
   const retryVoice = () => {
     setVoiceError('');
+    if (stageRef.current === 'has_documents') { runDocStage(stageTokenRef.current); return; }
     askAndListen(stageRef.current, 0, stageTokenRef.current);
   };
 
   // Chip / typed answer → advance the current stage
   const submitTyped = () => acceptAnswer(stageRef.current, typedAnswer);
+
+  // When a document lands during the inquiry stage → show chips, wait 2s, auto-advance
+  useEffect(() => {
+    if (docChoice === 'yes' && stage === 'has_documents' && docResult?.status === 'ready' && !docAdvancedRef.current) {
+      docAdvancedRef.current = true;
+      const t = setTimeout(() => advanceFromDocs(), 2000);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docResult, docChoice, stage]);
 
   const resetKiosk = () => {
     activeRef.current = false;
@@ -268,7 +327,7 @@ export default function TouchlessKiosk() {
     setFields(fieldsRef.current);
     setTriageResult(null); setStage('name'); stageRef.current = 'name'; stageTokenRef.current = 0;
     setCaption(''); setTranscript(''); setBotStatus('idle'); setStarted(false);
-    setLiveVolume(0); setVoiceError(''); setTypedAnswer('');
+    setLiveVolume(0); setVoiceError(''); setTypedAnswer(''); setDocChoice('none'); docAdvancedRef.current = false;
   };
 
   // QR polling + cleanup
@@ -441,8 +500,58 @@ export default function TouchlessKiosk() {
                 </div>
               )}
 
-              {/* Tap-to-answer fallback — always available so no one gets stuck */}
-              {started && (
+              {/* Document inquiry stage — Yes/No, then QR + extracted chips */}
+              {started && stage === 'has_documents' && (
+                <div className="w-full max-w-xl flex flex-col items-center gap-4">
+                  {docChoice !== 'yes' ? (
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                      <button onClick={docYes} className="px-5 py-4 rounded-2xl bg-primary text-on-primary font-title-md text-title-md shadow-lg hover:bg-primary-container transition-all flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[24px]">description</span>
+                        {lang === 'hi' ? '📄 हाँ, पर्ची स्कैन करें' : '📄 Yes, Scan Document'}
+                      </button>
+                      <button onClick={docNo} className="px-5 py-4 rounded-2xl bg-surface-container-high text-on-surface font-title-md text-title-md shadow-sm hover:bg-surface-container transition-colors flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[24px]">skip_next</span>
+                        {lang === 'hi' ? '⏭️ नहीं, आगे बढ़ें' : '⏭️ No, Skip & Continue'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-full flex flex-col items-center gap-3 bg-surface-container-lowest rounded-2xl p-5 shadow-sm ring-1 ring-surface-container-high">
+                      {docResult?.status === 'ready' ? (
+                        <div className="w-full flex flex-col items-center gap-2">
+                          <div className="flex items-center gap-2 text-primary">
+                            <span className="material-symbols-outlined text-[24px]">check_circle</span>
+                            <span className="font-title-md text-title-md font-semibold">{lang === 'hi' ? 'दस्तावेज़ मिला!' : 'Document Received!'}</span>
+                          </div>
+                          {docResult.ocrData?.medicines?.length > 0 && (
+                            <div className="flex flex-wrap justify-center gap-1.5">
+                              {docResult.ocrData.medicines.map((m, i) => (
+                                <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-label-sm text-label-sm">
+                                  <span className="material-symbols-outlined text-[13px]">medication</span>{m.name}{m.dosage ? ` — ${m.dosage}` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <span className="font-label-md text-label-md text-on-surface-variant">{lang === 'hi' ? 'आगे बढ़ रहे हैं…' : 'Continuing…'}</span>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="font-body-md text-body-md text-on-surface text-center">{lang === 'hi' ? 'फ़ोन कैमरे से यह QR स्कैन करें और पर्ची अपलोड करें।' : 'Scan this QR with your phone camera and upload your document.'}</p>
+                          <div className="p-3 bg-white rounded-2xl shadow-sm">
+                            <QRCodeSVG value={mobileUrl} size={168} level="M" />
+                          </div>
+                          <button onClick={advanceFromDocs} className="px-5 py-3 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-sm hover:bg-primary-container transition-colors flex items-center gap-1.5">
+                            {lang === 'hi' ? 'आगे बढ़ें' : 'Continue Intake'}
+                            <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tap-to-answer fallback — always available so no one gets stuck (not on the doc stage) */}
+              {started && stage !== 'has_documents' && (
                 <div className="w-full max-w-2xl flex flex-col items-center gap-2.5">
                   {KIOSK_CHIPS[stage] && (
                     <div className="flex flex-wrap items-center justify-center gap-2">

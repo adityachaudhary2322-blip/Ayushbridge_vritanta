@@ -1,8 +1,20 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam';
 
-const STAGES = ['name', 'ageGender', 'complaint', 'agni', 'sleep', 'energy', 'history'];
+const STAGES = ['name', 'ageGender', 'complaint', 'has_documents', 'agni', 'sleep', 'energy', 'history'];
+
+const DOC_Q = {
+  en: 'Do you have any past prescription or lab test report you would like to scan?',
+  hi: 'क्या आपके पास कोई पुरानी डॉक्टर की पर्ची या लैब रिपोर्ट है जिसे आप अपलोड करना चाहते हैं?',
+};
+function detectDocIntent(text) {
+  const tl = (text || '').toLowerCase();
+  if (/हाँ|हां|haan|\bha\b|\byes\b|scan|पर्ची|पर्चा|pardi|pardhi|report|रिपोर्ट/.test(tl)) return 'yes';
+  if (/नहीं|नही|nahi|nahin|\bno\b|skip|आगे|छोड़/.test(tl)) return 'no';
+  return null;
+}
 
 const Q = {
   name:      { en: 'Hello, I am Dr. AYUSH AI Vaidya. To begin, please tell me your full name.',        hi: 'नमस्ते, मैं डॉक्टर आयुष एआई वैद्य हूँ। शुरू करने के लिए कृपया अपना पूरा नाम बताएं।' },
@@ -16,7 +28,8 @@ const Q = {
 const REPROMPT = { en: 'Please speak a bit louder.', hi: 'कृपया थोड़ा ज़ोर से बोलें।' };
 const STAGE_LABEL = {
   name: { en: 'Name', hi: 'नाम' }, ageGender: { en: 'Age & Gender', hi: 'उम्र व लिंग' },
-  complaint: { en: 'Chief Complaint', hi: 'मुख्य तकलीफ' }, agni: { en: 'Agni & Koshtha', hi: 'अग्नि व कोष्ठ' },
+  complaint: { en: 'Chief Complaint', hi: 'मुख्य तकलीफ' }, has_documents: { en: 'Documents', hi: 'दस्तावेज़' },
+  agni: { en: 'Agni & Koshtha', hi: 'अग्नि व कोष्ठ' },
   sleep: { en: 'Sleep & Stress', hi: 'निद्रा व मानस' }, energy: { en: 'Energy & Vitality', hi: 'बल व ऊर्जा' },
   history: { en: 'Chronic History', hi: 'पुरानी बीमारी' },
 };
@@ -86,6 +99,12 @@ export default function TeleConsultRoom() {
   const [triageResult, setTriageResult] = useState(null);
   const [webcamError, setWebcamError] = useState(false);
   const [audioOutputMode, setAudioOutputMode] = useState('speaker'); // 'speaker' | 'earpiece'
+  const [docChoice, setDocChoice] = useState('none'); // 'none' | 'ask' | 'yes' (document inquiry)
+  const [docResult, setDocResult] = useState(null);
+  const docAdvancedRef = useRef(false);
+  const pollRef = useRef(null);
+  const [sessionId] = useState(() => 'SES-' + Math.random().toString(36).substring(2, 8).toUpperCase());
+  const mobileUrl = `${window.location.origin}/mobile-scan?sid=${sessionId}`;
 
   const recRef = useRef(null);
   const streamRef = useRef(null);
@@ -218,7 +237,7 @@ export default function TeleConsultRoom() {
           name: f.name, age: f.age, gender: f.gender,
           symptoms: f.complaint, agni: f.agni, koshtha: f.koshtha,
           sleep_stress: f.sleep_stress, energy_lifestyle: f.energy_lifestyle, chronic_history: f.chronic_history,
-          lang: langRef.current, room,
+          sessionId, lang: langRef.current, room,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -305,6 +324,7 @@ export default function TeleConsultRoom() {
   function goToStage(stageKey) {
     const token = ++stageTokenRef.current;
     stageRef.current = stageKey; setStage(stageKey);
+    if (stageKey === 'has_documents') { runDocStage(token); return; }
     askAndListen(stageKey, 0, token);
   }
 
@@ -313,7 +333,41 @@ export default function TeleConsultRoom() {
     goToStage(STAGES[0]);
   }
 
-  const retryVoice = () => { setVoiceError(''); askAndListen(stageRef.current, 0, stageTokenRef.current); };
+  const advanceFromDocs = () => {
+    setDocChoice('none');
+    const next = STAGES[STAGES.indexOf('has_documents') + 1];
+    if (next) goToStage(next); else submitTriage();
+  };
+
+  async function runDocStage(token) {
+    docAdvancedRef.current = false;
+    setDocChoice('ask');
+    setTranscript('');
+    await speak(DOC_Q[langRef.current], langRef.current);
+    if (!stageAlive(token)) return;
+    const r = await listenOnce({ langCode: langRef.current === 'hi' ? 'hi-IN' : 'en-IN' });
+    if (!stageAlive(token)) return;
+    if (r.status === 'ok') {
+      const intent = detectDocIntent(r.text);
+      if (intent === 'yes') { docYes(); return; }
+      if (intent === 'no') { docNo(); return; }
+      setBotStatus('idle'); return;
+    }
+    if (r.status === 'error') {
+      setBotStatus('idle');
+      setVoiceError(langRef.current === 'hi' ? '⚠️ वॉयस सेवा त्रुटि — कृपया नीचे बटन दबाएं।' : '⚠️ Voice Service Error — please tap a button below.');
+      return;
+    }
+    setBotStatus('idle');
+  }
+  const docYes = () => { stopRec(); stopSarvamAudio(); setLiveVolume(0); setVoiceError(''); docAdvancedRef.current = false; setDocChoice('yes'); setBotStatus('idle'); };
+  const docNo = () => { stopRec(); stopSarvamAudio(); setLiveVolume(0); setVoiceError(''); advanceFromDocs(); };
+
+  const retryVoice = () => {
+    setVoiceError('');
+    if (stageRef.current === 'has_documents') { runDocStage(stageTokenRef.current); return; }
+    askAndListen(stageRef.current, 0, stageTokenRef.current);
+  };
   const submitTyped = () => acceptAnswer(stageRef.current, typedAnswer);
 
   const runFlow = async (run) => {
@@ -337,6 +391,30 @@ export default function TeleConsultRoom() {
     stopWebcam();
     navigate('/');
   };
+
+  // Poll for a mobile document upload tied to this session
+  useEffect(() => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/session-docs/${sessionId}`);
+        const data = await res.json();
+        if (data.status === 'ready') { setDocResult(data); clearInterval(pollRef.current); }
+        else if (data.status === 'processing') setDocResult(data);
+      } catch { /* keep polling */ }
+    }, 2000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Upload lands during the inquiry stage → chips shown, wait 2s, auto-advance
+  useEffect(() => {
+    if (docChoice === 'yes' && stage === 'has_documents' && docResult?.status === 'ready' && !docAdvancedRef.current) {
+      docAdvancedRef.current = true;
+      const t = setTimeout(() => advanceFromDocs(), 2000);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docResult, docChoice, stage]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -478,8 +556,56 @@ export default function TeleConsultRoom() {
           </button>
         )}
 
-        {/* Interview chip / text fallback — noisy room or mic failure escape hatch */}
-        {phase === 'interview' && !triageResult && (
+        {/* Document inquiry stage — Yes/No, then QR + extracted chips */}
+        {phase === 'interview' && stage === 'has_documents' && !triageResult && (
+          <div className="absolute inset-x-0 bottom-16 flex flex-col items-center gap-3 px-4">
+            {docChoice !== 'yes' ? (
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <button onClick={docYes} className="px-5 py-3.5 rounded-2xl bg-primary text-on-primary font-title-md text-title-md shadow-lg hover:bg-primary-container transition-all flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[22px]">description</span>
+                  {lang === 'hi' ? '📄 हाँ, पर्ची स्कैन करें' : '📄 Yes, Scan Document'}
+                </button>
+                <button onClick={docNo} className="px-5 py-3.5 rounded-2xl bg-white/15 text-white font-title-md text-title-md backdrop-blur-sm hover:bg-white/25 transition-colors flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[22px]">skip_next</span>
+                  {lang === 'hi' ? '⏭️ नहीं, आगे बढ़ें' : '⏭️ No, Skip & Continue'}
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl p-4 flex flex-col items-center gap-2.5 shadow-xl max-w-sm">
+                {docResult?.status === 'ready' ? (
+                  <div className="flex flex-col items-center gap-2 text-neutral-900">
+                    <div className="flex items-center gap-2 text-green-600">
+                      <span className="material-symbols-outlined text-[22px]">check_circle</span>
+                      <span className="font-title-md text-title-md font-semibold">{lang === 'hi' ? 'दस्तावेज़ मिला!' : 'Document Received!'}</span>
+                    </div>
+                    {docResult.ocrData?.medicines?.length > 0 && (
+                      <div className="flex flex-wrap justify-center gap-1.5">
+                        {docResult.ocrData.medicines.map((m, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-label-sm text-label-sm">
+                            <span className="material-symbols-outlined text-[13px]">medication</span>{m.name}{m.dosage ? ` — ${m.dosage}` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <span className="font-label-md text-label-md text-neutral-500">{lang === 'hi' ? 'आगे बढ़ रहे हैं…' : 'Continuing…'}</span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="font-body-sm text-body-sm text-neutral-700 text-center">{lang === 'hi' ? 'फ़ोन कैमरे से यह QR स्कैन करें।' : 'Scan this QR with your phone camera.'}</p>
+                    <QRCodeSVG value={mobileUrl} size={150} level="M" />
+                    <button onClick={advanceFromDocs} className="px-4 py-2.5 rounded-xl bg-primary text-on-primary font-label-md text-label-md hover:bg-primary-container transition-colors flex items-center gap-1.5">
+                      {lang === 'hi' ? 'आगे बढ़ें' : 'Continue Intake'}
+                      <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Interview chip / text fallback — noisy room or mic failure escape hatch (not on doc stage) */}
+        {phase === 'interview' && !triageResult && stage !== 'has_documents' && (
           <div className="absolute inset-x-0 bottom-24 flex flex-col items-center gap-2.5 px-4">
             {TELE_CHIPS[stage] && (
               <div className="flex flex-wrap items-center justify-center gap-2 max-w-2xl">
