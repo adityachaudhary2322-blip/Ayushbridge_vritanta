@@ -542,6 +542,15 @@ app.get('/api/doctor/queue', (req, res) => {
   res.json(sortedQueue());
 });
 
+// ── Serve the production React build (unified deployment on Render) ─────────────
+const frontendDist = path.join(__dirname, '../ayush-frontend/dist');
+app.use(express.static(frontendDist));
+
+// Catch-all route to support React Router (SPA). Registered AFTER all /api routes.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendDist, 'index.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`AYUSH backend running on http://localhost:${PORT}`);
 });
