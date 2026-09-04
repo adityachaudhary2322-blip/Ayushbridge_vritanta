@@ -86,6 +86,90 @@ export async function recordAndTranscribe({ onResult, onError, onStart, onStop, 
   }
 }
 
+// Hands-free recorder: auto-stops after `silenceMs` of quiet once speech is
+// detected (or at `maxMs` hard cap). Returns the MediaRecorder so the caller can
+// stop it early on a manual tap. Transcribes via /api/sarvam-stt.
+export async function recordUntilSilence({ onResult, onError, onStart, onStop, silenceMs = 3000, maxMs = 12000 }) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = [];
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+
+    // Voice-activity detection via Web Audio RMS
+    let audioCtx, analyser, rafId;
+    let hasSpoken = false;
+    let lastSpeech = 0; // set to performance.now() once VAD starts
+    const startedAt = performance.now();
+    const SPEAK_THRESHOLD = 0.018;
+
+    const cleanupVad = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (audioCtx && audioCtx.state !== 'closed') audioCtx.close().catch(() => {});
+    };
+
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      src.connect(analyser);
+      const buf = new Uint8Array(analyser.fftSize);
+      lastSpeech = performance.now();
+
+      const tick = () => {
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+        const rms = Math.sqrt(sum / buf.length);
+        const now = performance.now();
+        if (rms > SPEAK_THRESHOLD) { hasSpoken = true; lastSpeech = now; }
+        const silentFor = now - lastSpeech;
+        if ((hasSpoken && silentFor > silenceMs) || (now - startedAt > maxMs)) {
+          if (rec.state === 'recording') rec.stop();
+          return;
+        }
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+    } catch {
+      // VAD unavailable → fall back to hard maxMs stop only
+      setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, maxMs);
+    }
+
+    rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    rec.onstop = async () => {
+      cleanupVad();
+      stream.getTracks().forEach(t => t.stop());
+      onStop?.();
+      const blob = new Blob(chunks, { type: mime || 'audio/webm' });
+      if (blob.size < 500) { onError?.('empty'); return; }
+      const fd = new FormData();
+      fd.append('audio', blob, 'audio.webm');
+      try {
+        const res = await fetch('/api/sarvam-stt', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error(`STT HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.transcript?.trim()) onResult(data.transcript.trim());
+        else onError?.('no-transcript');
+      } catch (err) {
+        console.warn('[recordUntilSilence] stt:', err.message);
+        onError?.('network');
+      }
+    };
+
+    onStart?.();
+    rec.start(250);
+    return rec;
+  } catch (err) {
+    onError?.(err.name === 'NotAllowedError' ? 'not-allowed' : 'start-failed');
+    return null;
+  }
+}
+
 // Parse conversation slots for display chips
 export function extractSlots(messages) {
   const userText = messages.filter(m => m.role === 'user').map(m => m.text).join(' ');

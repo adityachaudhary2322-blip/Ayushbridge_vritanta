@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { sarvamTTS, recordAndTranscribe } from '../utils/sarvam';
 import VideoConsult from './VideoConsult';
@@ -72,7 +73,9 @@ function parseDigestion(text) {
   return { agni, koshtha };
 }
 
-export default function PatientIntake({ onNavigate, onTriage }) {
+export default function PatientIntake() {
+  const navigate = useNavigate();
+  const onTriage = undefined; // record is persisted server-side; dashboard fetches the queue
   // Language
   const [lang, setLang] = useState('en');
   const langRef = useRef('en');
@@ -374,7 +377,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
                 <span className="material-symbols-outlined text-[22px]">videocam</span>
                 Start Video Consult
               </button>
-              <button onClick={() => onNavigate('doctor')} className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm">
+              <button onClick={() => navigate('/doctor')} className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm">
                 <span className="material-symbols-outlined text-[18px]">stethoscope</span>
                 Switch to Doctor Dashboard
                 <span className="ml-1 px-1.5 py-0.5 rounded-full bg-surface-container-highest font-label-sm text-label-sm text-primary">Staff Demo</span>
@@ -643,7 +646,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
 
             {/* Staff shortcut */}
             <div className="flex justify-end">
-              <button onClick={() => onNavigate('doctor')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm">
+              <button onClick={() => navigate('/doctor')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm">
                 <span className="material-symbols-outlined text-[18px]">stethoscope</span>
                 Switch to Doctor Dashboard
                 <span className="px-1.5 py-0.5 rounded-full bg-surface-container-highest font-label-sm text-label-sm text-primary">Staff Demo</span>

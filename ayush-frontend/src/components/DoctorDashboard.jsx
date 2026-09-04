@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ClinicalBriefingModal from './ClinicalBriefingModal';
 import PatientAdviceDrawer from './PatientAdviceDrawer';
 import CaseReportModal from './CaseReportModal';
+import CaseHistorySheet from './CaseHistorySheet';
 
 const API = '/api';
 
-export default function DoctorDashboard({ latestPatient, onNavigate }) {
+export default function DoctorDashboard() {
+  const navigate = useNavigate();
+  const latestPatient = null;
   const [patients, setPatients] = useState([]);
   const [zoomUrl, setZoomUrl] = useState('');
   const [zoomLoading, setZoomLoading] = useState(false);
@@ -15,16 +19,13 @@ export default function DoctorDashboard({ latestPatient, onNavigate }) {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [openDocsId, setOpenDocsId] = useState(null);   // which patient card's docs accordion is open
   const [docModal, setDocModal] = useState(null);        // documents record shown in inspection modal
+  const [caseSheet, setCaseSheet] = useState(null);      // patient record shown in printable A4 case sheet
 
   useEffect(() => {
     fetchPatients();
     const interval = setInterval(fetchPatients, 10000);
     return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    if (latestPatient) setSelectedPatient(latestPatient);
-  }, [latestPatient]);
 
   const fetchPatients = async () => {
     try {
@@ -108,6 +109,10 @@ export default function DoctorDashboard({ latestPatient, onNavigate }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
+              <button onClick={() => navigate('/')} className="px-3.5 py-2 rounded-xl bg-surface-container-lowest hover:bg-surface-container text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 shadow-sm">
+                <span className="material-symbols-outlined text-primary text-[18px]">home</span>
+                <span>Kiosk Home</span>
+              </button>
               <div className="px-3.5 py-2 rounded-xl bg-surface-container-lowest shadow-sm flex items-center gap-2 text-on-surface font-label-md text-label-md">
                 <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
                 <span>Accepting Walk-ins &amp; Rural e-Sanjeevani</span>
@@ -349,7 +354,7 @@ export default function DoctorDashboard({ latestPatient, onNavigate }) {
                                     className="mt-1 self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm"
                                   >
                                     <span className="material-symbols-outlined text-primary text-[16px]">visibility</span>
-                                    View Original Document
+                                    Inspect Document
                                   </button>
                                 )}
                               </div>
@@ -364,6 +369,9 @@ export default function DoctorDashboard({ latestPatient, onNavigate }) {
                           </button>
                           <button onClick={() => handleZoom(p)} disabled={zoomLoading} className="px-3 py-1.5 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
                             <span className="material-symbols-outlined text-[15px]">videocam</span> {zoomLoading ? 'Creating…' : 'Zoom'}
+                          </button>
+                          <button onClick={() => setCaseSheet(p)} className="px-3 py-1.5 rounded-xl bg-tertiary-container/50 text-on-tertiary-container hover:bg-tertiary-container font-label-md text-label-md flex items-center gap-1 transition-colors shadow-sm">
+                            <span className="material-symbols-outlined text-[15px]">print</span> Print Total Case History (PDF)
                           </button>
                           <button onClick={() => openCaseReport(p)} className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
                             <span className="material-symbols-outlined text-[15px]">description</span> Case Report
@@ -621,6 +629,11 @@ export default function DoctorDashboard({ latestPatient, onNavigate }) {
         onClose={() => setShowCaseReport(false)}
         patient={selectedPatient}
       />
+
+      {/* Printable A4 Combined Case History Sheet */}
+      {caseSheet && (
+        <CaseHistorySheet patient={caseSheet} onClose={() => setCaseSheet(null)} />
+      )}
 
       {/* Document Inspection Modal */}
       {docModal && (

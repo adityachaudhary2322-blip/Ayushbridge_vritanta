@@ -382,13 +382,19 @@ app.post('/api/upload-mobile', upload.single('document'), async (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, error: 'document file is required' });
 
   const base64 = req.file.buffer.toString('base64');
-  const mimeType = req.file.mimetype || 'image/jpeg';
+  const isPdfName = req.file.originalname.toLowerCase().endsWith('.pdf');
+
+  // Mobile pickers frequently send 'application/octet-stream' for PDFs — sanitize.
+  let mimeType = req.file.mimetype || 'image/jpeg';
+  if (isPdfName || mimeType === 'application/octet-stream') {
+    if (isPdfName) mimeType = 'application/pdf';
+  }
 
   // Mark as processing so the kiosk can show a spinner while Gemini works
   sessionDocs.set(sessionId, { status: 'processing', fileName: req.file.originalname });
 
   let ocrData = {
-    documentType: 'Unknown',
+    documentType: isPdfName ? 'Lab Report (PDF)' : 'Unknown',
     medicines: [],
     abnormalLabValues: [],
     clinicalImpressions: 'Document received (analysis unavailable).',
@@ -410,11 +416,29 @@ app.post('/api/upload-mobile', upload.single('document'), async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (!response.ok) throw new Error(`Gemini ${response.status}`);
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini ${response.status}: ${errText.slice(0, 200)}`);
+    }
     const data = await response.json();
-    const parsed = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
+
+    // Strip markdown code fences Gemini sometimes wraps JSON in, then parse defensively.
+    let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    rawText = rawText.replace(/```json\s*/gi, '').replace(/```\s*$/gi, '').trim();
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error('Failed to parse Gemini response as JSON:', rawText);
+      parsed = {
+        documentType: isPdfName ? 'Lab Report (PDF)' : 'Prescription',
+        medicines: [],
+        abnormalLabValues: [],
+        clinicalImpressions: rawText.substring(0, 300),
+      };
+    }
     ocrData = {
-      documentType: parsed.documentType || 'Unknown',
+      documentType: parsed.documentType || (isPdfName ? 'Lab Report (PDF)' : 'Unknown'),
       medicines: Array.isArray(parsed.medicines) ? parsed.medicines : [],
       abnormalLabValues: Array.isArray(parsed.abnormalLabValues) ? parsed.abnormalLabValues : [],
       clinicalImpressions: parsed.clinicalImpressions || '',
