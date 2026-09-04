@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { sarvamTTS, recordUntilSilence } from '../utils/sarvam';
+import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam';
 
-const STAGES = ['name', 'ageGender', 'mobile', 'complaint', 'agni'];
+const STAGES = ['name', 'ageGender', 'mobile', 'complaint', 'agni', 'sleep', 'energy', 'history'];
 
 const Q = {
   name:      { en: 'Namaste! Welcome to AYUSH Swasthya Sahayak. Please say your full name.',           hi: 'नमस्ते! आयुष स्वास्थ्य सहायक में आपका स्वागत है। कृपया अपना पूरा नाम बोलें।' },
@@ -11,11 +11,15 @@ const Q = {
   mobile:    { en: 'Please say your ten-digit mobile number.',                                          hi: 'कृपया अपना दस अंकों का मोबाइल नंबर बोलें।' },
   complaint: { en: 'What health problem are you facing, and since how many days?',                      hi: 'आपको क्या स्वास्थ्य समस्या है, और कितने दिनों से है?' },
   agni:      { en: 'How is your appetite and digestion? Any constipation or irregular bowels?',        hi: 'आपकी भूख और पाचन कैसा है? कब्ज या अनियमित पेट तो नहीं?' },
+  sleep:     { en: 'How is your sleep quality? Do you experience broken sleep, insomnia, or high stress and anxiety?', hi: 'आपकी नींद कैसी है — क्या रात में नींद टूटती है या अत्यधिक तनाव व चिंता महसूस होती है?' },
+  energy:    { en: 'How is your daily energy level — excessive fatigue, lethargy, or normal? Do you stay well-hydrated?', hi: 'दिनभर आपका ऊर्जा स्तर कैसा रहता है — अत्यधिक सुस्ती, कमजोरी या सामान्य? क्या पर्याप्त पानी पीते हैं?' },
+  history:   { en: 'Do you have any pre-existing conditions — Diabetes, Hypertension, Thyroid, asthma, or drug allergies?', hi: 'क्या आपको पहले से कोई पुरानी बीमारी है — जैसे बीपी, शुगर, थायराइड, सांस फूलना या किसी दवा से एलर्जी?' },
 };
 const REPROMPT = { en: 'Please speak a bit louder.', hi: 'कृपया थोड़ा ज़ोर से बोलें।' };
 const STAGE_LABEL = {
   name: { en: 'Name', hi: 'नाम' }, ageGender: { en: 'Age & Gender', hi: 'उम्र व लिंग' },
   mobile: { en: 'Mobile', hi: 'मोबाइल' }, complaint: { en: 'Complaint', hi: 'तकलीफ' }, agni: { en: 'Agni / Koshtha', hi: 'अग्नि / कोष्ठ' },
+  sleep: { en: 'Sleep & Stress', hi: 'निद्रा व मानस' }, energy: { en: 'Energy & Vitality', hi: 'बल व ऊर्जा' }, history: { en: 'Chronic History', hi: 'पुरानी बीमारी' },
 };
 
 const PRIORITY_CONFIG = {
@@ -59,8 +63,9 @@ export default function TouchlessKiosk() {
   const [transcript, setTranscript] = useState('');   // patient's live transcript
   const [error, setError] = useState('');
 
-  const fieldsRef = useRef({ name: '', age: '', gender: '', mobile: '', complaint: '', agni: '', koshtha: '' });
+  const fieldsRef = useRef({ name: '', age: '', gender: '', mobile: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
   const [fields, setFields] = useState(fieldsRef.current);
+  const isMountedRef = useRef(false);
 
   const [triageResult, setTriageResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -120,6 +125,9 @@ export default function TouchlessKiosk() {
       const d = text.replace(/\D/g, ''); f.mobile = d.length >= 10 ? d.slice(-10) : (d || 'N/A');
     } else if (stageKey === 'complaint') f.complaint = text;
     else if (stageKey === 'agni') { const { agni, koshtha } = parseDigestion(text); f.agni = agni; f.koshtha = koshtha; }
+    else if (stageKey === 'sleep') f.sleep_stress = text;
+    else if (stageKey === 'energy') f.energy_lifestyle = text;
+    else if (stageKey === 'history') f.chronic_history = text;
     fieldsRef.current = f;
     setFields(f);
   }, []);
@@ -140,6 +148,7 @@ export default function TouchlessKiosk() {
           patientId: `PK${Date.now()}`,
           name: f.name, age: f.age, gender: f.gender, phone: f.mobile,
           symptoms: f.complaint, agni: f.agni, koshtha: f.koshtha,
+          sleep_stress: f.sleep_stress, energy_lifestyle: f.energy_lifestyle, chronic_history: f.chronic_history,
           sessionId, lang: langRef.current,
         }),
       });
@@ -182,6 +191,7 @@ export default function TouchlessKiosk() {
   // ── Start / stop ──────────────────────────────────────────────────────────────
   const begin = () => {
     if (started) return;
+    stopSarvamAudio();           // ensure no stale/overlapping audio before we start
     setStarted(true);
     activeRef.current = true;
     // Unlock browser audio within the user gesture so TTS can auto-play hands-free
@@ -200,8 +210,9 @@ export default function TouchlessKiosk() {
 
   const resetKiosk = () => {
     activeRef.current = false;
+    stopSarvamAudio();
     if (recRef.current?.state === 'recording') recRef.current.stop();
-    fieldsRef.current = { name: '', age: '', gender: '', mobile: '', complaint: '', agni: '', koshtha: '' };
+    fieldsRef.current = { name: '', age: '', gender: '', mobile: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' };
     setFields(fieldsRef.current);
     setTriageResult(null); setStage('name'); stageRef.current = 'name';
     setCaption(''); setTranscript(''); setBotStatus('idle'); setStarted(false);
@@ -209,6 +220,8 @@ export default function TouchlessKiosk() {
 
   // QR polling + cleanup
   useEffect(() => {
+    if (isMountedRef.current) return; // guard React StrictMode double-invoke in dev
+    isMountedRef.current = true;
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/session-docs/${sessionId}`);
@@ -219,6 +232,8 @@ export default function TouchlessKiosk() {
     }, 2000);
     return () => {
       activeRef.current = false;
+      isMountedRef.current = false;
+      stopSarvamAudio();
       if (pollRef.current) clearInterval(pollRef.current);
       if (recRef.current?.state === 'recording') recRef.current.stop();
     };

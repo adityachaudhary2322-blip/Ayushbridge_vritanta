@@ -91,7 +91,11 @@ P3 = chronic/moderate, standard consult (triageLabel="Moderate")
 P4 = wellness/preventive/routine (triageLabel="Routine")
 Agni: Manda=low/sluggish, Tikshna=sharp/excessive, Vishama=irregular, Sama=balanced.
 Koshtha: Krura=hard/constipated bowel, Mridu=soft/loose, Madhyama=regular.
-Set geneticAlert=true if hereditary/family history conditions are mentioned.`;
+Set geneticAlert=true if hereditary/family history conditions are mentioned.
+Also weigh these when present:
+- Sleep & Stress (Nidra/Manas): insomnia, broken sleep or high anxiety indicates Vata/Pitta manas aggravation — reflect in dosha and raise urgency if severe.
+- Energy & Lifestyle (Bala/Hydration): severe fatigue/weakness lowers Dhatwagni/Bala and warrants closer review; lethargy/heaviness suggests Kapha.
+- Chronic history & red flags (Purva Vyadhi): pre-existing Diabetes, Hypertension, Thyroid, asthma/breathlessness or drug allergies raise clinical urgency (consider P2) and MUST be surfaced in redFlags.`;
 
 function isHindiInput(transcript, context) {
   if (context?.lang === 'hi') return true;
@@ -242,6 +246,7 @@ app.post('/api/ask-followup', async (req, res) => {
 app.post('/api/triage', async (req, res) => {
   const {
     patientId, name, age, gender, phone, symptoms, agni, koshtha,
+    sleep_stress, energy_lifestyle, chronic_history,
     sessionId, documents, conversation, lang,
   } = req.body;
 
@@ -260,6 +265,9 @@ app.post('/api/triage', async (req, res) => {
     symptoms && `Symptoms & onset: ${symptoms}`,
     agni && `Appetite/Digestion (Agni): ${agni}`,
     koshtha && `Bowel (Koshtha): ${koshtha}`,
+    sleep_stress && `Sleep & Stress (Nidra/Manas): ${sleep_stress}`,
+    energy_lifestyle && `Energy & Lifestyle (Bala/Hydration): ${energy_lifestyle}`,
+    chronic_history && `Chronic history & red flags (Purva Vyadhi): ${chronic_history}`,
     attachedDocs?.ocrData && `Documents: ${JSON.stringify(attachedDocs.ocrData)}`,
   ].filter(Boolean).join('\n');
 
@@ -276,6 +284,9 @@ app.post('/api/triage', async (req, res) => {
     gender: gender || 'N/A',
     phone: phone || 'N/A',
     symptoms: symptoms || conversationText || 'N/A',
+    sleep_stress: sleep_stress || 'N/A',
+    energy_lifestyle: energy_lifestyle || 'N/A',
+    chronic_history: chronic_history || 'N/A',
     lang: lang || 'en',
     documents: attachedDocs,
     timestamp: new Date().toISOString(),

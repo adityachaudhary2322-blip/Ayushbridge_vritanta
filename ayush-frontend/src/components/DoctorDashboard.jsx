@@ -285,6 +285,26 @@ export default function DoctorDashboard() {
                           </div>
                         )}
 
+                        {/* Leading AYUSH history — Nidra & Manas, Bala, Purva Vyadhi */}
+                        {[
+                          { l: 'Nidra & Manas', v: p.sleep_stress, icon: 'bedtime' },
+                          { l: 'Bala & Lifestyle', v: p.energy_lifestyle, icon: 'bolt' },
+                          { l: 'Chronic History', v: p.chronic_history, icon: 'history' },
+                        ].some(x => x.v && x.v !== 'N/A') && (
+                          <div className="flex flex-col gap-1.5 rounded-xl bg-surface-container-low p-3">
+                            {[
+                              { l: 'Nidra & Manas (Sleep/Stress)', v: p.sleep_stress, icon: 'bedtime' },
+                              { l: 'Bala & Lifestyle (Energy)', v: p.energy_lifestyle, icon: 'bolt' },
+                              { l: 'Chronic History (Purva Vyadhi)', v: p.chronic_history, icon: 'history' },
+                            ].filter(x => x.v && x.v !== 'N/A').map(x => (
+                              <div key={x.l} className="flex items-start gap-1.5 font-body-sm text-body-sm">
+                                <span className="material-symbols-outlined text-[15px] text-primary mt-0.5">{x.icon}</span>
+                                <span><strong className="text-on-surface">{x.l}:</strong> <span className="text-on-surface-variant">{x.v}</span></span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         {/* Meds / Labs */}
                         {(p.meds !== 'None' || p.labs !== 'None') && (
                           <div className="font-body-sm text-body-sm text-on-surface-variant">

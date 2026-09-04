@@ -100,6 +100,7 @@ export default function CaseHistorySheet({ patient, onClose }) {
         <Section n={2} title="Clinical Presentation & History">
           <Row label="Chief Complaint" value={p.chiefComplaint} />
           <Row label="Reported Symptoms" value={p.symptoms} />
+          <Row label="Chronic History (Purva Vyadhi)" value={(p.chronic_history && p.chronic_history !== 'N/A') ? p.chronic_history : 'None reported'} />
           <Row label="Red Flags / Alerts" value={(p.redFlags && p.redFlags !== 'None') ? p.redFlags : (p.surgicalAlert ? 'Surgical alert flagged' : 'None')} />
         </Section>
 
@@ -108,6 +109,8 @@ export default function CaseHistorySheet({ patient, onClose }) {
           <Row label="Agni (Digestive Fire)" value={agni} />
           <Row label="Koshtha (Bowel)" value={koshtha} />
           <Row label="Ama Markers" value={ama} />
+          <Row label="Nidra & Manas (Sleep/Stress)" value={(p.sleep_stress && p.sleep_stress !== 'N/A') ? p.sleep_stress : '—'} />
+          <Row label="Bala & Lifestyle (Energy)" value={(p.energy_lifestyle && p.energy_lifestyle !== 'N/A') ? p.energy_lifestyle : '—'} />
         </Section>
 
         <Section n={4} title="Document OCR Findings">

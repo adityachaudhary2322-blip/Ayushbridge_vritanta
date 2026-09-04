@@ -1,19 +1,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { sarvamTTS, recordUntilSilence } from '../utils/sarvam';
+import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam';
 
-const STAGES = ['name', 'ageGender', 'complaint', 'agni'];
+const STAGES = ['name', 'ageGender', 'complaint', 'agni', 'sleep', 'energy', 'history'];
 
 const Q = {
   name:      { en: 'Hello, I am Dr. AYUSH AI Vaidya. To begin, please tell me your full name.',        hi: 'नमस्ते, मैं डॉक्टर आयुष एआई वैद्य हूँ। शुरू करने के लिए कृपया अपना पूरा नाम बताएं।' },
   ageGender: { en: 'Thank you. What is your age and gender?',                                            hi: 'धन्यवाद। आपकी उम्र और लिंग क्या है?' },
   complaint: { en: 'What health problem are you facing, and since how many days?',                       hi: 'आपको क्या स्वास्थ्य समस्या है, और कितने दिनों से है?' },
   agni:      { en: 'How is your appetite and digestion? Any constipation or irregular bowels?',          hi: 'आपकी भूख और पाचन कैसा है? कब्ज या अनियमित पेट तो नहीं?' },
+  sleep:     { en: 'How is your sleep quality? Do you experience broken sleep, insomnia, or high stress and anxiety?', hi: 'आपकी नींद कैसी है — क्या रात में नींद टूटती है या अत्यधिक तनाव व चिंता महसूस होती है?' },
+  energy:    { en: 'How is your daily energy level — excessive fatigue, lethargy, or normal? Do you stay well-hydrated?', hi: 'दिनभर आपका ऊर्जा स्तर कैसा रहता है — अत्यधिक सुस्ती, कमजोरी या सामान्य? क्या पर्याप्त पानी पीते हैं?' },
+  history:   { en: 'Do you have any pre-existing conditions — Diabetes, Hypertension, Thyroid, asthma, or drug allergies?', hi: 'क्या आपको पहले से कोई पुरानी बीमारी है — जैसे बीपी, शुगर, थायराइड, सांस फूलना या किसी दवा से एलर्जी?' },
 };
 const REPROMPT = { en: 'Please speak a bit louder.', hi: 'कृपया थोड़ा ज़ोर से बोलें।' };
 const STAGE_LABEL = {
   name: { en: 'Name', hi: 'नाम' }, ageGender: { en: 'Age & Gender', hi: 'उम्र व लिंग' },
   complaint: { en: 'Chief Complaint', hi: 'मुख्य तकलीफ' }, agni: { en: 'Agni & Koshtha', hi: 'अग्नि व कोष्ठ' },
+  sleep: { en: 'Sleep & Stress', hi: 'निद्रा व मानस' }, energy: { en: 'Energy & Vitality', hi: 'बल व ऊर्जा' },
+  history: { en: 'Chronic History', hi: 'पुरानी बीमारी' },
 };
 const IVR_PROMPT = 'नमस्ते! हिंदी के लिए 1 दबाएं या बोलें। For English, press or say 2.';
 
@@ -64,18 +69,27 @@ export default function TeleConsultRoom() {
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState('');
   const [stage, setStage] = useState('name');
-  const [fields, setFields] = useState({ name: '', age: '', gender: '', complaint: '', agni: '', koshtha: '' });
+  const [fields, setFields] = useState({ name: '', age: '', gender: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
   const [triageResult, setTriageResult] = useState(null);
   const [webcamError, setWebcamError] = useState(false);
+  const [audioOutputMode, setAudioOutputMode] = useState('speaker'); // 'speaker' | 'earpiece'
 
-  const activeRef = useRef(false);
   const recRef = useRef(null);
   const streamRef = useRef(null);
   const videoRef = useRef(null);
   const langRef = useRef('en');
   const langChosenRef = useRef(false);
   const stageRef = useRef('name');
-  const fieldsRef = useRef({ name: '', age: '', gender: '', complaint: '', agni: '', koshtha: '' });
+  const fieldsRef = useRef({ name: '', age: '', gender: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
+
+  // Audio-singleton + StrictMode guards
+  const activeAudioRef = useRef(null);
+  const isMountedRef = useRef(false);
+  const runIdRef = useRef(0);
+  const audioOutputModeRef = useRef('speaker');
+  const earpieceSinkRef = useRef(null);
+
+  const alive = (run) => isMountedRef.current && runIdRef.current === run;
 
   const netErr = () => setError(langRef.current === 'hi'
     ? 'नेटवर्क समस्या — कृपया जांचें कि सर्वर चल रहा है।'
@@ -85,13 +99,27 @@ export default function TeleConsultRoom() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.muted = true; }
     } catch {
       setWebcamError(true);
     }
   };
-  const stopWebcam = () => { streamRef.current?.getTracks().forEach(t => t.stop()); };
+  const stopWebcam = () => { streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null; };
   const stopRec = () => { if (recRef.current?.state === 'recording') recRef.current.stop(); };
+
+  // Bot speech — cancels any prior audio (singleton), cuts the mic first so the
+  // bot's own voice can never be recorded, and routes to speaker/earpiece.
+  const speak = async (text, forceLang) => {
+    stopRec(); // strict mic cutoff during playback
+    setBotStatus('speaking');
+    setCaption(text);
+    await sarvamTTS(text, (forceLang || langRef.current) === 'hi' ? 'hi' : 'en', {
+      onNetworkError: netErr,
+      volume: audioOutputModeRef.current === 'earpiece' ? 0.35 : 1.0,
+      sinkId: audioOutputModeRef.current === 'earpiece' ? (earpieceSinkRef.current || undefined) : 'default',
+      audioRef: activeAudioRef,
+    });
+  };
 
   const listenOnce = ({ silenceMs = 1500, maxMs = 8000, langCode } = {}) => new Promise((resolve) => {
     setBotStatus('listening');
@@ -108,7 +136,7 @@ export default function TeleConsultRoom() {
     }).then((rec) => { recRef.current = rec; });
   });
 
-  // Called by IVR voice detection OR the on-screen buttons
+  // IVR voice detection OR the on-screen buttons
   const chooseLang = (l) => {
     if (langChosenRef.current) return;
     langChosenRef.current = true;
@@ -116,6 +144,32 @@ export default function TeleConsultRoom() {
     setLang(l);
     stopRec(); // cancel any in-progress voice detection for this step
     setBotStatus('idle');
+  };
+
+  // Speaker <-> earpiece routing toggle
+  const toggleAudioOutput = async () => {
+    const next = audioOutputModeRef.current === 'speaker' ? 'earpiece' : 'speaker';
+    audioOutputModeRef.current = next;
+    setAudioOutputMode(next);
+    const audio = activeAudioRef.current;
+    if (next === 'earpiece') {
+      try {
+        const devices = await navigator.mediaDevices?.enumerateDevices?.();
+        const ep = devices?.find(d => d.kind === 'audiooutput' &&
+          (d.label.toLowerCase().includes('earpiece') || d.label.toLowerCase().includes('receiver') || d.deviceId === 'communications'));
+        if (ep) earpieceSinkRef.current = ep.deviceId;
+      } catch { /* ignore */ }
+      if (audio) {
+        audio.volume = 0.35;
+        if (typeof audio.setSinkId === 'function' && earpieceSinkRef.current) audio.setSinkId(earpieceSinkRef.current).catch(() => {});
+      }
+    } else {
+      earpieceSinkRef.current = null;
+      if (audio) {
+        audio.volume = 1.0;
+        if (typeof audio.setSinkId === 'function') audio.setSinkId('default').catch(() => {});
+      }
+    }
   };
 
   const storeAnswer = (stageKey, text) => {
@@ -126,6 +180,9 @@ export default function TeleConsultRoom() {
       f.gender = parseGender(text);
     } else if (stageKey === 'complaint') f.complaint = text;
     else if (stageKey === 'agni') { const { agni, koshtha } = parseDigestion(text); f.agni = agni; f.koshtha = koshtha; }
+    else if (stageKey === 'sleep') f.sleep_stress = text;
+    else if (stageKey === 'energy') f.energy_lifestyle = text;
+    else if (stageKey === 'history') f.chronic_history = text;
     fieldsRef.current = f;
     setFields(f);
   };
@@ -136,8 +193,7 @@ export default function TeleConsultRoom() {
     const done = langRef.current === 'hi'
       ? 'धन्यवाद! आपका परामर्श पूरा हुआ। रिपोर्ट डॉक्टर को भेज दी गई है।'
       : 'Thank you! Your consultation is complete. Your report has been sent to the doctor.';
-    setCaption(done);
-    sarvamTTS(done, langRef.current, { onNetworkError: netErr });
+    speak(done);
     try {
       const res = await fetch('/api/triage', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -145,6 +201,7 @@ export default function TeleConsultRoom() {
           patientId: `PT${Date.now()}`,
           name: f.name, age: f.age, gender: f.gender,
           symptoms: f.complaint, agni: f.agni, koshtha: f.koshtha,
+          sleep_stress: f.sleep_stress, energy_lifestyle: f.energy_lifestyle, chronic_history: f.chronic_history,
           lang: langRef.current, room,
         }),
       });
@@ -165,74 +222,73 @@ export default function TeleConsultRoom() {
     }
   };
 
-  const runIVR = async () => {
-    setPhase('ivr'); setBotStatus('speaking'); setCaption(IVR_PROMPT);
-    await sarvamTTS(IVR_PROMPT, 'hi', { onNetworkError: netErr });
+  const runIVR = async (run) => {
+    setPhase('ivr');
+    await speak(IVR_PROMPT, 'hi');
     let tries = 0;
-    while (!langChosenRef.current && tries < 2 && activeRef.current) {
+    while (!langChosenRef.current && tries < 2 && alive(run)) {
       const t = await listenOnce({ langCode: 'unknown', maxMs: 7000 });
       if (langChosenRef.current) break;
       const l = t && detectLangChoice(t);
       if (l) { chooseLang(l); break; }
       tries++;
-      if (!langChosenRef.current && tries < 2 && activeRef.current) {
-        setBotStatus('speaking');
-        await sarvamTTS('कृपया 1 या 2 कहें। Please say 1 or 2.', 'hi', { onNetworkError: netErr });
+      if (!langChosenRef.current && tries < 2 && alive(run)) {
+        await speak('कृपया 1 या 2 कहें। Please say 1 or 2.', 'hi');
       }
     }
     if (!langChosenRef.current) chooseLang('hi'); // sensible default
   };
 
-  const runInterview = async () => {
+  const runInterview = async (run) => {
     setPhase('interview');
     const code = langRef.current === 'hi' ? 'hi-IN' : 'en-IN';
     for (const stageKey of STAGES) {
-      if (!activeRef.current) return;
+      if (!alive(run)) return;
       stageRef.current = stageKey; setStage(stageKey);
       let got = null, tries = 0;
-      while (got == null && tries < 2 && activeRef.current) {
-        const q = tries === 0 ? Q[stageKey][langRef.current] : REPROMPT[langRef.current];
-        setBotStatus('speaking'); setCaption(q);
-        await sarvamTTS(q, langRef.current, { onNetworkError: netErr });
-        if (!activeRef.current) return;
+      while (got == null && tries < 2 && alive(run)) {
+        await speak(tries === 0 ? Q[stageKey][langRef.current] : REPROMPT[langRef.current]);
+        if (!alive(run)) return;
         got = await listenOnce({ langCode: code });
         tries++;
       }
       if (got) storeAnswer(stageKey, got);
     }
-    if (activeRef.current) await submitTriage();
+    if (alive(run)) await submitTriage();
   };
 
-  const runFlow = async () => {
-    // 5-second admission countdown
+  const runFlow = async (run) => {
     for (let c = 5; c >= 1; c--) {
-      if (!activeRef.current) return;
+      if (!alive(run)) return;
       setCountdown(c);
       await wait(1000);
     }
-    if (!activeRef.current) return;
+    if (!alive(run)) return;
     setCountdown(0);
     setPhase('admitted');
     await wait(1400);
-    if (!activeRef.current) return;
-    await runIVR();
-    if (!activeRef.current) return;
-    await runInterview();
+    if (!alive(run)) return;
+    await runIVR(run);
+    if (!alive(run)) return;
+    await runInterview(run);
   };
 
   const endCall = () => {
-    activeRef.current = false;
+    isMountedRef.current = false;
+    stopSarvamAudio();
     stopRec();
     stopWebcam();
     navigate('/');
   };
 
   useEffect(() => {
-    activeRef.current = true;
+    isMountedRef.current = true;
+    const myRun = ++runIdRef.current;    // new token each mount → StrictMode's first run is orphaned
     startWebcam();
-    runFlow();
+    runFlow(myRun);
     return () => {
-      activeRef.current = false;
+      isMountedRef.current = false;
+      stopSarvamAudio();
       stopRec();
       stopWebcam();
     };
@@ -313,7 +369,7 @@ export default function TeleConsultRoom() {
               <span className="font-label-sm text-label-sm">Camera off</span>
             </div>
           ) : (
-            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
           )}
           <span className="absolute bottom-1.5 left-2 px-2 py-0.5 rounded-full bg-black/60 text-white/90 font-label-sm text-label-sm">You</span>
         </div>
@@ -339,9 +395,7 @@ export default function TeleConsultRoom() {
         {phase === 'interview' && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
             {STAGES.map((s, i) => (
-              <div key={s} className="flex items-center gap-1.5">
-                <div className={`h-2 rounded-full transition-all ${i < stageIdx ? 'w-6 bg-primary' : i === stageIdx ? 'w-6 bg-primary/60' : 'w-2 bg-white/20'}`} />
-              </div>
+              <div key={s} className={`h-2 rounded-full transition-all ${i < stageIdx ? 'w-6 bg-primary' : i === stageIdx ? 'w-6 bg-primary/60' : 'w-2 bg-white/20'}`} />
             ))}
             <span className="ml-2 font-label-sm text-label-sm text-white/70">{STAGE_LABEL[stage][lang]}</span>
           </div>
@@ -400,6 +454,22 @@ export default function TeleConsultRoom() {
           </div>
         )}
       </div>
+
+      {/* Bottom call-control toolbar */}
+      {!triageResult && phase !== 'waiting' && phase !== 'admitted' && (
+        <div className="flex flex-col items-center gap-1.5 pb-5">
+          <button
+            onClick={toggleAudioOutput}
+            title="फोन कान पर लगाकर बात करें / Hold phone near ear"
+            className={`inline-flex items-center gap-2 px-5 py-3 rounded-full font-label-lg text-label-lg shadow-lg transition-all ${
+              audioOutputMode === 'speaker' ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+          >
+            <span className="material-symbols-outlined text-[22px]">{audioOutputMode === 'speaker' ? 'volume_up' : 'phone_in_talk'}</span>
+            {audioOutputMode === 'speaker' ? '🔊 लाउडस्पीकर / Speaker Mode' : '📱 कान के पास / Earpiece Mode'}
+          </button>
+          <p className="font-label-sm text-label-sm text-white/50">फोन कान पर लगाकर बात करें / Hold phone near ear</p>
+        </div>
+      )}
     </div>
   );
 }

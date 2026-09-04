@@ -5,7 +5,7 @@ import { sarvamTTS, recordAndTranscribe } from '../utils/sarvam';
 import VideoConsult from './VideoConsult';
 
 // ── Sequential intake definition ───────────────────────────────────────────────
-const STEPS = ['name', 'demographics', 'phone', 'symptoms', 'digestion'];
+const STEPS = ['name', 'demographics', 'phone', 'symptoms', 'digestion', 'sleep', 'energy', 'history'];
 
 const QUESTIONS = {
   name: {
@@ -28,12 +28,36 @@ const QUESTIONS = {
     en: 'How is your appetite and digestion? Any constipation or irregular bowel movements?',
     hi: 'आपकी भूख और पाचन कैसा रहता है? पेट साफ होने में कोई परेशानी?',
   },
+  sleep: {
+    en: 'How is your sleep quality? Do you experience broken sleep, insomnia, or high stress/anxiety?',
+    hi: 'आपकी नींद कैसी है — क्या रात में नींद टूटती है या अत्यधिक तनाव व चिंता महसूस होती है?',
+  },
+  energy: {
+    en: 'How is your daily energy level — excessive fatigue, lethargy, or normal? Do you stay well-hydrated?',
+    hi: 'दिनभर आपका ऊर्जा स्तर कैसा रहता है — अत्यधिक सुस्ती, कमजोरी या सामान्य? क्या पर्याप्त पानी पीते हैं?',
+  },
+  history: {
+    en: 'Do you have any pre-existing conditions — Diabetes, Hypertension, Thyroid, asthma, or drug allergies?',
+    hi: 'क्या आपको पहले से कोई पुरानी बीमारी है — जैसे बीपी, शुगर, थायराइड, सांस फूलना या किसी दवा से एलर्जी?',
+  },
 };
 
 const CHIPS = {
   demographics: ['Male', 'Female', 'Other'],
   symptoms: ['पेट दर्द (Abdominal pain)', 'खट्टी डकार व सीने में जलन', 'जोड़ों का दर्द (Joint pain)', 'सिरदर्द व थकान'],
   digestion: ['भूख कम लगती है (Manda)', 'पाचन ठीक है (Sama)', 'कब्ज की समस्या (Krura)', 'खट्टी डकारें (Amla)'],
+  sleep: {
+    en: ['Sound Sleep', 'Disturbed Sleep', 'Insomnia / High Stress'],
+    hi: ['गहरी नींद (Sound Sleep)', 'नींद में बाधा (Disturbed)', 'अनिद्रा व भारी तनाव (Insomnia/Stress)'],
+  },
+  energy: {
+    en: ['Normal Energy', 'Sluggish / Lethargic', 'Severe Weakness / Fatigue'],
+    hi: ['ऊर्जा सामान्य (Normal)', 'भारीपन व सुस्ती (Kapha Lethargy)', 'अत्यधिक कमजोरी व थकान (Severe Fatigue)'],
+  },
+  history: {
+    en: ['No Pre-existing Conditions', 'Hypertension / High BP', 'Diabetes / Sugar', 'Respiratory / Allergy'],
+    hi: ['कोई पुरानी बीमारी नहीं (None)', 'उच्च रक्तचाप / High BP', 'मधुमेह / Diabetes', 'सांस फूलना या एलर्जी'],
+  },
 };
 
 const STEP_META = {
@@ -42,6 +66,9 @@ const STEP_META = {
   phone:        { label: 'Mobile',      labelHi: 'मोबाइल',      icon: 'phone' },
   symptoms:     { label: 'Symptoms',    labelHi: 'तकलीफ',       icon: 'healing' },
   digestion:    { label: 'Agni/Koshtha', labelHi: 'अग्नि/कोष्ठ', icon: 'local_fire_department' },
+  sleep:        { label: 'Sleep/Stress', labelHi: 'निद्रा/मानस', icon: 'bedtime' },
+  energy:       { label: 'Energy',       labelHi: 'बल/ऊर्जा',    icon: 'bolt' },
+  history:      { label: 'History',      labelHi: 'पुरानी बीमारी', icon: 'history' },
 };
 
 const PRIORITY_CONFIG = {
@@ -84,8 +111,8 @@ export default function PatientIntake() {
   // Sequential step machine
   const [step, setStep] = useState('name');       // 'name'|'demographics'|'phone'|'symptoms'|'digestion'|'review'
   const stepRef = useRef('name');
-  const [fields, setFields] = useState({ name: '', age: '', gender: '', phone: '', symptoms: '', agni: '', koshtha: '' });
-  const fieldsRef = useRef({ name: '', age: '', gender: '', phone: '', symptoms: '', agni: '', koshtha: '' });
+  const [fields, setFields] = useState({ name: '', age: '', gender: '', phone: '', symptoms: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
+  const fieldsRef = useRef({ name: '', age: '', gender: '', phone: '', symptoms: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
 
   // Chat
   const [messages, setMessages] = useState([]);
@@ -142,6 +169,7 @@ export default function PatientIntake() {
           patientId: `P${Date.now()}`,
           name: f.name, age: f.age, gender: f.gender, phone: f.phone,
           symptoms: f.symptoms, agni: f.agni, koshtha: f.koshtha,
+          sleep_stress: f.sleep_stress, energy_lifestyle: f.energy_lifestyle, chronic_history: f.chronic_history,
           sessionId, lang: langRef.current,
         }),
       });
@@ -192,6 +220,12 @@ export default function PatientIntake() {
     } else if (stepKey === 'digestion') {
       const { agni, koshtha } = parseDigestion(text);
       f.agni = agni; f.koshtha = koshtha;
+    } else if (stepKey === 'sleep') {
+      f.sleep_stress = text;
+    } else if (stepKey === 'energy') {
+      f.energy_lifestyle = text;
+    } else if (stepKey === 'history') {
+      f.chronic_history = text;
     }
 
     fieldsRef.current = f;
@@ -204,7 +238,7 @@ export default function PatientIntake() {
       setStep(nextKey);
       setTimeout(() => askStep(nextKey), 350);
     } else {
-      submitTriage(f); // digestion was the last step
+      submitTriage(f); // history was the last step
     }
   }, [addMessage, askStep, submitTriage]);
 
@@ -601,18 +635,21 @@ export default function PatientIntake() {
                 </div>
               )}
 
-              {/* Quick chips for current step */}
-              {CHIPS[step] && (
-                <div className="px-4 py-2.5 bg-surface-container-low/70 flex items-center gap-2 overflow-x-auto">
-                  <span className="font-label-sm text-label-sm text-on-surface-variant whitespace-nowrap">Quick:</span>
-                  {CHIPS[step].map(chip => (
-                    <button key={chip} onClick={() => handleAnswer(chip)}
-                      className="px-3 py-1 rounded-full bg-surface-container-highest hover:bg-surface-container text-on-surface font-label-sm text-label-sm whitespace-nowrap shadow-sm transition-colors">
-                      {chip}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Quick chips for current step (some steps have language-specific chip sets) */}
+              {CHIPS[step] && (() => {
+                const chipSet = Array.isArray(CHIPS[step]) ? CHIPS[step] : (CHIPS[step][lang] || CHIPS[step].en);
+                return (
+                  <div className="px-4 py-2.5 bg-surface-container-low/70 flex items-center gap-2 overflow-x-auto">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant whitespace-nowrap">Quick:</span>
+                    {chipSet.map(chip => (
+                      <button key={chip} onClick={() => handleAnswer(chip)}
+                        className="px-3 py-1 rounded-full bg-surface-container-highest hover:bg-surface-container text-on-surface font-label-sm text-label-sm whitespace-nowrap shadow-sm transition-colors">
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* Input bar */}
               <div className="p-4 bg-surface-container-lowest shadow-sm flex flex-col gap-2.5">

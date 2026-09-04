@@ -7,11 +7,27 @@ export function detectMode(text) {
   return 'english';
 }
 
+// Module-level audio singleton — guarantees only ONE synthesized voice ever plays
+// at a time, even if React StrictMode double-invokes effects. Any new speak cancels
+// the previous one.
+let _activeAudio = null;
+
+export function stopSarvamAudio() {
+  if (_activeAudio) {
+    try { _activeAudio.pause(); _activeAudio.currentTime = 0; _activeAudio.src = ''; } catch { /* ignore */ }
+    _activeAudio = null;
+  }
+}
+
 // Sarvam Bulbul v3 TTS — resolves when audio finishes (or fallback timeout).
 // A genuine network/backend failure calls onNetworkError; a browser autoplay
 // block is NOT treated as an error (it just resolves quietly).
-export async function sarvamTTS(text, lang, { onNetworkError } = {}) {
+// Options: { onNetworkError, volume (0..1), sinkId (output device), audioRef (ref
+// object that receives the playing Audio element for live speaker/earpiece control) }.
+export async function sarvamTTS(text, lang, { onNetworkError, volume = 1.0, sinkId, audioRef } = {}) {
   if (!text?.trim()) return;
+  // Cancel any currently-playing synthesized speech before starting a new one.
+  stopSarvamAudio();
   let data;
   try {
     const res = await fetch('/api/sarvam-tts', {
@@ -31,13 +47,23 @@ export async function sarvamTTS(text, lang, { onNetworkError } = {}) {
   // Playback is decoupled from the fetch: an autoplay block must never read as an error
   await new Promise((resolve) => {
     const audio = new Audio(data.audio);
-    const fallback = setTimeout(resolve, Math.max(3000, text.length * 58 + 800));
-    audio.onended = () => { clearTimeout(fallback); resolve(); };
-    audio.onerror = () => { clearTimeout(fallback); resolve(); };
-    audio.play().catch((playErr) => {
-      console.warn('[sarvamTTS] autoplay deferred until user interaction:', playErr?.message);
+    audio.volume = typeof volume === 'number' ? volume : 1.0;
+    if (sinkId && typeof audio.setSinkId === 'function') {
+      audio.setSinkId(sinkId).catch(() => {});
+    }
+    _activeAudio = audio;
+    if (audioRef) audioRef.current = audio;
+    const done = () => {
+      if (_activeAudio === audio) _activeAudio = null;
       clearTimeout(fallback);
       resolve();
+    };
+    const fallback = setTimeout(done, Math.max(3000, text.length * 58 + 800));
+    audio.onended = done;
+    audio.onerror = done;
+    audio.play().catch((playErr) => {
+      console.warn('[sarvamTTS] autoplay deferred until user interaction:', playErr?.message);
+      done();
     });
   });
 }
