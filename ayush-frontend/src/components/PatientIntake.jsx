@@ -25,7 +25,7 @@ const DONE_MSG = {
   en: 'Your details have been recorded. You may now proceed for doctor consultation.',
 };
 
-// ── Input mode: Devanagari / Hinglish / English ─────────────────────────────
+// ── Input mode detection ──────────────────────────────────────────────────────
 function detectMode(text) {
   if (!text) return 'english';
   if (/[ऀ-ॿ]/.test(text)) return 'devanagari';
@@ -33,7 +33,7 @@ function detectMode(text) {
   return 'english';
 }
 
-// ── Structured chat intake (5 questions before free Gemini chat) ─────────────
+// ── Structured chat intake questions ─────────────────────────────────────────
 const CHAT_INTAKE = [
   { field: 'name',
     en: "Hello! I'm AYUSH Sahayak — your AI health assistant. To begin, please tell me your full name.",
@@ -52,62 +52,69 @@ const CHAT_INTAKE = [
     hi: 'आखिरी सवाल — आपकी भूख कैसी है: कम, सामान्य, या ज़्यादा?' },
 ];
 
-// ── Robust Chrome speechSynthesis speak + listen ────────────────────────────
-// Chrome bug: utterance.onend sometimes never fires.
-// Fix: resume() before speak, timeout fallback, onerror also triggers listen.
-function speakThenListen({ text, lang, onDone }) {
-  const synth = window.speechSynthesis;
-
-  const doListen = (() => {
-    let fired = false;
-    return () => { if (!fired) { fired = true; onDone(); } };
-  })();
-
-  if (!synth || !text) { doListen(); return; }
-
-  synth.cancel();
-  // Chrome sometimes pauses synthesis after page idle — resume() fixes it
-  synth.resume();
-
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
-  utt.rate = 0.88;
-  utt.volume = 1;
-
-  // Estimate reading time: ~65 ms/char + 1 s buffer, min 2 s
-  const fallbackMs = Math.max(2000, text.length * 65 + 1000);
-  const timer = setTimeout(doListen, fallbackMs);
-
-  utt.onend = () => { clearTimeout(timer); doListen(); };
-  utt.onerror = () => { clearTimeout(timer); doListen(); };
-
-  synth.speak(utt);
+// ── Sarvam TTS: speaks text via Bulbul v3, resolves when audio ends ──────────
+async function sarvamTTS(text, lang) {
+  if (!text?.trim()) return;
+  try {
+    const res = await fetch(`${API}/sarvam-tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, lang: lang === 'hi' ? 'hi' : 'en' }),
+    });
+    if (!res.ok) return; // silent fail → flow continues
+    const data = await res.json();
+    if (!data.audio) return;
+    await new Promise((resolve) => {
+      const audio = new Audio(data.audio);
+      // Fallback: resolve after estimated read time so recording always starts
+      const fallback = setTimeout(resolve, Math.max(3000, text.length * 60 + 800));
+      audio.onended = () => { clearTimeout(fallback); resolve(); };
+      audio.onerror = () => { clearTimeout(fallback); resolve(); };
+      audio.play().catch(resolve); // autoplay block → still resolve
+    });
+  } catch {
+    // Network / parse error — continue without audio
+  }
 }
 
-// ── Start SpeechRecognition safely ─────────────────────────────────────────
-function startRec({ lang, onResult, onError, onStart, onEnd }) {
-  const SR = window.webkitSpeechRecognition || window.SpeechRecognition;
-  if (!SR) {
-    onError?.('no-api');
-    return null;
-  }
+// ── Sarvam STT: records via MediaRecorder, sends to Saaras v3 ────────────────
+async function recordAndTranscribe({ onResult, onError, onStart, onStop, maxMs = 6000 }) {
   try {
-    const rec = new SR();
-    rec.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.maxAlternatives = 3;
-    rec.onstart = onStart;
-    rec.onend = onEnd;
-    rec.onerror = (e) => onError?.(e.error);
-    rec.onresult = (e) => {
-      const t = e.results[0][0].transcript.trim();
-      if (t) onResult(t);
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = [];
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    const mediaRec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+
+    mediaRec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    mediaRec.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      onStop?.();
+      const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+      if (blob.size < 500) { onError?.('empty'); return; }
+      const fd = new FormData();
+      fd.append('audio', blob, 'audio.webm');
+      try {
+        const res = await fetch(`${API}/sarvam-stt`, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.transcript?.trim()) {
+          onResult(data.transcript.trim());
+        } else {
+          onError?.('no-transcript');
+        }
+      } catch {
+        onError?.('network');
+      }
     };
-    rec.start();
-    return rec;
+
+    onStart?.();
+    mediaRec.start(250); // collect data every 250ms
+    setTimeout(() => { if (mediaRec.state === 'recording') mediaRec.stop(); }, maxMs);
+    return mediaRec;
   } catch (err) {
-    onError?.('start-failed');
+    onError?.(err.name === 'NotAllowedError' ? 'not-allowed' : 'start-failed');
     return null;
   }
 }
@@ -115,17 +122,18 @@ function startRec({ lang, onResult, onError, onStart, onEnd }) {
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function PatientIntake({ onNavigate, onTriage }) {
 
-  // ── Feature B: chat ────────────────────────────────────────────────────────
+  // ── Language toggle ───────────────────────────────────────────────────────
   const [lang, setLang] = useState('en');
   const langRef = useRef('en');
   useEffect(() => { langRef.current = lang; }, [lang]);
 
+  // ── Chat state ────────────────────────────────────────────────────────────
   const [messages, setMessages] = useState([{
     role: 'ai',
     text: CHAT_INTAKE[0].en,
     time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
   }]);
-  // chatIntakeStep 0–4 = collecting fields, 5 = done/free Gemini chat
+  // chatIntakeStep 0–4 = structured intake, 5+ = free Gemini chat
   const [chatIntakeStep, setChatIntakeStep] = useState(0);
   const [intakeFields, setIntakeFields] = useState({ name: '', age: '', gender: '', mobile: '', complaint: '', agni: '' });
   const [inputText, setInputText] = useState('');
@@ -135,8 +143,8 @@ export default function PatientIntake({ onNavigate, onTriage }) {
   const [ocrChips, setOcrChips] = useState([]);
   const [ocrLoading, setOcrLoading] = useState(false);
 
-  // ── Feature A: wizard ──────────────────────────────────────────────────────
-  const [wizardStep, setWizardStep] = useState(0); // 0=idle 1-5=active 6=done
+  // ── Wizard state ──────────────────────────────────────────────────────────
+  const [wizardStep, setWizardStep] = useState(0);
   const [wizardListening, setWizardListening] = useState(false);
   const [wizardPaused, setWizardPaused] = useState(false);
   const [wizardError, setWizardError] = useState('');
@@ -144,23 +152,25 @@ export default function PatientIntake({ onNavigate, onTriage }) {
     name: '', age: '', gender: '', mobile: '', symptoms: '', agni: '',
   });
 
+  // ── Refs ──────────────────────────────────────────────────────────────────
   const wizardPausedRef = useRef(false);
   const wizardStepRef = useRef(0);
-  const wizardRecRef = useRef(null);
+  const wizardRecRef = useRef(null);    // active MediaRecorder for wizard
+  const chatRecRef = useRef(null);      // active MediaRecorder for chat mic
   const chatIntakeStepRef = useRef(0);
   const intakeFieldsRef = useRef({ name: '', age: '', gender: '', mobile: '', complaint: '', agni: '' });
   const chatEndRef = useRef(null);
-  const recognitionRef = useRef(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // ── Chat helpers ───────────────────────────────────────────────────────────
+  // ── Chat helpers ──────────────────────────────────────────────────────────
   const addMessage = useCallback((role, text) => {
     const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
     setMessages(prev => [...prev, { role, text, time }]);
   }, []);
 
+  // ── Chat intake answer parser ─────────────────────────────────────────────
   const parseIntakeAnswer = useCallback((step, text) => {
     const tl = text.toLowerCase();
     if (step === 0) return { name: text.trim() };
@@ -187,14 +197,15 @@ export default function PatientIntake({ onNavigate, onTriage }) {
     return {};
   }, []);
 
+  // ── Main chat followup (intake phase → Gemini phase) ─────────────────────
   const callFollowup = useCallback(async (transcript) => {
     const mode = detectMode(transcript);
     const currentLang = langRef.current;
     const speakLang = mode === 'devanagari' ? 'hi' : 'en';
     const stepNow = chatIntakeStepRef.current;
 
-    // ── Intake phase (steps 0–4) ──────────────────────────────────────────────
     if (stepNow < CHAT_INTAKE.length) {
+      // ── Structured intake phase ───────────────────────────────────────────
       const parsed = parseIntakeAnswer(stepNow, transcript);
       const nextStep = stepNow + 1;
       chatIntakeStepRef.current = nextStep;
@@ -208,19 +219,18 @@ export default function PatientIntake({ onNavigate, onTriage }) {
         const qText = (currentLang === 'hi' ? nextQ.hi : nextQ.en)
           .replace('{name}', newFields.name || '');
         addMessage('ai', qText);
-        speakThenListen({ text: qText, lang: speakLang, onDone: () => {} });
+        sarvamTTS(qText, speakLang);
       } else {
-        // All 5 fields collected → acknowledge and open Gemini chat
         const ack = currentLang === 'hi'
-          ? `शुक्रिया! आपका विवरण दर्ज हो गया। अब अपनी तकलीफ के बारे में विस्तार से बताएं — मैं यहाँ हूँ।`
-          : `Thank you! Your details are saved. Now please describe your main health concern in more detail — I'm here to help.`;
+          ? 'शुक्रिया! आपका विवरण दर्ज हो गया। अब अपनी तकलीफ के बारे में विस्तार से बताएं।'
+          : "Thank you! Your details are saved. Now please describe your main health concern in detail — I'm here to help.";
         addMessage('ai', ack);
-        speakThenListen({ text: ack, lang: speakLang, onDone: () => {} });
+        sarvamTTS(ack, speakLang);
       }
       return;
     }
 
-    // ── Free Gemini chat (step ≥ 5) ───────────────────────────────────────────
+    // ── Free Gemini chat ──────────────────────────────────────────────────
     setIsLoading(true);
     try {
       const langHint = mode === 'devanagari'
@@ -242,9 +252,8 @@ export default function PatientIntake({ onNavigate, onTriage }) {
         ? 'कृपया अपनी तकलीफ के बारे में और बताएं।'
         : 'Can you tell me more about your symptoms?');
       addMessage('ai', aiText);
-      // Use detected AI response language for TTS (not user preference)
       const aiMode = detectMode(aiText);
-      speakThenListen({ text: aiText, lang: aiMode === 'devanagari' ? 'hi' : 'en', onDone: () => {} });
+      sarvamTTS(aiText, aiMode === 'devanagari' ? 'hi' : 'en');
     } catch {
       addMessage('ai', mode === 'devanagari'
         ? 'कृपया जारी रखें।'
@@ -254,46 +263,29 @@ export default function PatientIntake({ onNavigate, onTriage }) {
     }
   }, [addMessage, parseIntakeAnswer]);
 
-  // ── Feature B: chat mic (with auto-retry on no-speech) ───────────────────
-  const startListening = () => {
-    if (!window.webkitSpeechRecognition && !window.SpeechRecognition) {
-      alert('Speech recognition requires Chrome or Edge. Please open this page in Chrome.');
+  // ── Chat mic: toggle recording with 5s auto-stop ─────────────────────────
+  const startListening = async () => {
+    if (isListening) {
+      if (chatRecRef.current?.state === 'recording') chatRecRef.current.stop();
       return;
     }
-    window.speechSynthesis?.cancel();
-    setIsListening(true);
-    let retried = false;
-
-    const tryRec = () => {
-      const rec = startRec({
-        lang,
-        onStart: () => setIsListening(true),
-        onEnd: () => { if (retried) setIsListening(false); },
-        onError: (code) => {
-          if (code === 'no-speech' && !retried) {
-            retried = true;
-            setTimeout(tryRec, 400); // auto-retry once
-            return;
-          }
-          setIsListening(false);
-          if (code === 'not-allowed') {
-            alert('Microphone access denied.\nChrome → 🔒 address bar → Allow microphone → Reload.');
-          } else if (code === 'network') {
-            alert('Network error — speech recognition needs an internet connection.\nCheck your connection and try again.');
-          } else if (code === 'no-api') {
-            alert('Speech recognition is not supported in this browser. Please use Chrome.');
-          }
-        },
-        onResult: (t) => {
-          retried = true;
-          setIsListening(false);
-          addMessage('patient', t);
-          callFollowup(t);
-        },
-      });
-      recognitionRef.current = rec;
-    };
-    tryRec();
+    const rec = await recordAndTranscribe({
+      maxMs: 5000,
+      onStart: () => setIsListening(true),
+      onStop: () => setIsListening(false),
+      onResult: (t) => { addMessage('patient', t); callFollowup(t); },
+      onError: (code) => {
+        setIsListening(false);
+        if (code === 'not-allowed') {
+          alert('Microphone access denied.\nChrome → 🔒 address bar → Allow microphone → Reload.');
+        } else if (code === 'network') {
+          alert('Network error — check your connection and try again.');
+        } else if (code === 'empty' || code === 'no-transcript') {
+          // silent — user can tap again
+        }
+      },
+    });
+    chatRecRef.current = rec;
   };
 
   const handleSend = async () => {
@@ -308,7 +300,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  // ── Feature B: OCR upload (base64 → Gemini vision) ────────────────────────
+  // ── OCR upload (base64 → Gemini Vision) ──────────────────────────────────
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -320,14 +312,12 @@ export default function PatientIntake({ onNavigate, onTriage }) {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-
       const res = await fetch(`${API}/ocr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileData, mimeType: file.type, fileName: file.name }),
       });
       const data = await res.json();
-
       const chips = [];
       if (data.meds && data.meds !== 'None detected')
         chips.push({ label: data.meds, icon: 'eco', color: 'text-primary' });
@@ -347,6 +337,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
     }
   };
 
+  // ── Submit to doctor ──────────────────────────────────────────────────────
   const handleSubmitToDoctor = async () => {
     const hasComplaint = wizardFields.symptoms || intakeFields.complaint;
     if (messages.length < 2 && !hasComplaint) {
@@ -354,7 +345,6 @@ export default function PatientIntake({ onNavigate, onTriage }) {
       return;
     }
     setIsSubmitting(true);
-    // Merge wizard + chat intake (wizard takes priority when both exist)
     const merged = {
       name:      wizardFields.name     || intakeFields.name     || 'N/A',
       age:       wizardFields.age      || intakeFields.age      || 'N/A',
@@ -388,7 +378,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
     }
   };
 
-  // ── Feature A: Wizard engine ───────────────────────────────────────────────
+  // ── Wizard engine ─────────────────────────────────────────────────────────
   const processWizardResult = useCallback((step, transcript) => {
     setWizardFields(prev => {
       const next = { ...prev };
@@ -398,8 +388,8 @@ export default function PatientIntake({ onNavigate, onTriage }) {
         const n = transcript.match(/\d+/);
         if (n) next.age = n[0];
         const tl = transcript.toLowerCase();
-        if (/female|महिला|स्त्री|औरत|लड़की/.test(tl)) next.gender = 'Female';
-        else if (/male|पुरुष|मर्द|लड़का/.test(tl)) next.gender = 'Male';
+        if (/female|महिला|स्त्री|औरत|लड़की|mahila|ladki/.test(tl)) next.gender = 'Female';
+        else if (/male|पुरुष|मर्द|लड़का|purush|mard/.test(tl)) next.gender = 'Male';
         else next.gender = transcript;
       } else if (step === 3) {
         const digits = transcript.replace(/\D/g, '');
@@ -408,34 +398,30 @@ export default function PatientIntake({ onNavigate, onTriage }) {
         next.symptoms = transcript;
       } else if (step === 5) {
         const tl = transcript.toLowerCase();
-        if (/कम|low|less|mand|buri/.test(tl)) next.agni = 'Mandagni (कम भूख)';
-        else if (/ज़्यादा|ज्यादा|high|more|tiksh|bahut/.test(tl)) next.agni = 'Tikshna (तेज़ भूख)';
+        if (/कम|low|less|mand|kam|thoda/.test(tl)) next.agni = 'Mandagni (कम भूख)';
+        else if (/ज़्यादा|ज्यादा|high|more|tiksh|bahut|zyada/.test(tl)) next.agni = 'Tikshna (तेज़ भूख)';
         else next.agni = 'Samagni (सामान्य)';
       }
       return next;
     });
 
-    if (step === 4) {
-      // Also push complaint into chat for Gemini context
-      addMessage('patient', transcript);
-    }
+    if (step === 4) addMessage('patient', transcript);
 
     const next = step + 1;
     if (next <= 5) {
       setWizardStep(next);
       wizardStepRef.current = next;
-      setTimeout(() => {
-        if (!wizardPausedRef.current) runWizardStep(next);
-      }, 500);
+      setTimeout(() => { if (!wizardPausedRef.current) runWizardStep(next); }, 400);
     } else {
       setWizardStep(6);
       wizardStepRef.current = 6;
       const doneText = langRef.current === 'hi' ? DONE_MSG.hi : DONE_MSG.en;
-      speakThenListen({ text: doneText, lang: langRef.current, onDone: () => {} });
+      sarvamTTS(doneText, langRef.current);
     }
   }, [addMessage]);
 
-  const runWizardStep = useCallback((step) => {
+  // async so we can await sarvamTTS before starting MediaRecorder
+  const runWizardStep = useCallback(async (step) => {
     if (wizardPausedRef.current) return;
     const currentLang = langRef.current;
     const s = WIZARD_STEPS[step - 1];
@@ -443,36 +429,33 @@ export default function PatientIntake({ onNavigate, onTriage }) {
     const text = currentLang === 'hi' ? s.prompt_hi : s.prompt_en;
 
     setWizardError('');
+    setWizardListening(false);
 
-    speakThenListen({
-      text,
-      lang: currentLang,
-      onDone: () => {
-        if (wizardPausedRef.current) return;
-        const rec = startRec({
-          lang: currentLang,
-          onStart: () => { setWizardListening(true); },
-          onEnd: () => { setWizardListening(false); },
-          onError: (code) => {
-            setWizardListening(false);
-            if (code === 'not-allowed') {
-              setWizardError('Microphone access denied. Click the 🔒 in Chrome\'s address bar → Allow microphone → Reload page.');
-            } else if (code === 'no-speech') {
-              setWizardError(currentLang === 'hi' ? 'आवाज़ नहीं सुनाई दी। दोबारा बोलें।' : 'No speech detected. Please tap "Repeat" and try again.');
-            } else if (code === 'network') {
-              setWizardError('Network error — speech recognition needs internet. Check your connection.');
-            } else if (code !== 'aborted') {
-              setWizardError(`Recognition error: ${code}. Tap "Repeat" to try again.`);
-            }
-          },
-          onResult: (t) => {
-            setWizardError('');
-            processWizardResult(step, t);
-          },
-        });
-        wizardRecRef.current = rec;
+    // 1. Speak prompt via Sarvam TTS (awaits audio completion)
+    await sarvamTTS(text, currentLang);
+
+    if (wizardPausedRef.current) return; // check again after TTS
+
+    // 2. Start recording via MediaRecorder → Sarvam STT
+    const rec = await recordAndTranscribe({
+      maxMs: 7000,
+      onStart: () => setWizardListening(true),
+      onStop: () => setWizardListening(false),
+      onResult: (t) => { setWizardError(''); processWizardResult(step, t); },
+      onError: (code) => {
+        setWizardListening(false);
+        if (code === 'not-allowed') {
+          setWizardError("Microphone access denied. Click 🔒 in Chrome's address bar → Allow microphone → Reload.");
+        } else if (code === 'empty' || code === 'no-transcript') {
+          setWizardError(currentLang === 'hi' ? 'आवाज़ नहीं सुनाई दी। "दोबारा" बटन दबाएं।' : 'No speech detected. Tap "Repeat" and try again.');
+        } else if (code === 'network') {
+          setWizardError('Network error — check your connection and tap "Repeat".');
+        } else if (code !== 'aborted') {
+          setWizardError(`Recording failed (${code}). Tap "Repeat" to try again.`);
+        }
       },
     });
+    wizardRecRef.current = rec;
   }, [processWizardResult]);
 
   const startWizard = () => {
@@ -489,8 +472,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
   const cancelWizard = () => {
     wizardPausedRef.current = false;
     wizardStepRef.current = 0;
-    window.speechSynthesis?.cancel();
-    wizardRecRef.current?.abort();
+    if (wizardRecRef.current?.state === 'recording') wizardRecRef.current.stop();
     setWizardStep(0);
     setWizardListening(false);
     setWizardPaused(false);
@@ -499,17 +481,14 @@ export default function PatientIntake({ onNavigate, onTriage }) {
 
   const pauseWizard = () => {
     if (wizardPausedRef.current) {
-      // Resume
       wizardPausedRef.current = false;
       setWizardPaused(false);
       setWizardError('');
       runWizardStep(wizardStepRef.current);
     } else {
-      // Pause
       wizardPausedRef.current = true;
       setWizardPaused(true);
-      window.speechSynthesis?.cancel();
-      wizardRecRef.current?.abort();
+      if (wizardRecRef.current?.state === 'recording') wizardRecRef.current.stop();
       setWizardListening(false);
     }
   };
@@ -518,20 +497,38 @@ export default function PatientIntake({ onNavigate, onTriage }) {
     wizardPausedRef.current = false;
     setWizardPaused(false);
     setWizardError('');
-    window.speechSynthesis?.cancel();
-    wizardRecRef.current?.abort();
+    if (wizardRecRef.current?.state === 'recording') wizardRecRef.current.stop();
     setWizardListening(false);
     setTimeout(() => runWizardStep(wizardStepRef.current), 200);
   };
 
-  // ── Wizard field display ───────────────────────────────────────────────────
+  // Manual Tap & Speak for wizard (fallback)
+  const tapAndSpeak = async () => {
+    if (wizardListening) return;
+    const step = wizardStepRef.current;
+    const rec = await recordAndTranscribe({
+      maxMs: 7000,
+      onStart: () => setWizardListening(true),
+      onStop: () => setWizardListening(false),
+      onResult: (t) => { setWizardError(''); processWizardResult(step, t); },
+      onError: (code) => {
+        setWizardListening(false);
+        setWizardError(code === 'not-allowed'
+          ? "Mic denied. Allow in Chrome → 🔒 → Reload."
+          : `Error: ${code}. Try again.`);
+      },
+    });
+    wizardRecRef.current = rec;
+  };
+
+  // ── Wizard field display ──────────────────────────────────────────────────
   const WizardFieldGrid = ({ compact = false }) => {
     const fields = [
-      { key: 'name',      label: lang === 'hi' ? 'नाम'        : 'Name',           icon: 'person',                 step: 1 },
-      { key: 'ageGender', label: lang === 'hi' ? 'उम्र / लिंग' : 'Age / Gender',   icon: 'cake',                   step: 2 },
-      { key: 'mobile',    label: lang === 'hi' ? 'मोबाइल'     : 'Mobile',          icon: 'phone',                  step: 3 },
-      { key: 'symptoms',  label: lang === 'hi' ? 'तकलीफ'      : 'Symptoms',        icon: 'healing',                step: 4, full: !compact },
-      { key: 'agni',      label: lang === 'hi' ? 'अग्नि'      : 'Agni / Appetite', icon: 'local_fire_department',  step: 5 },
+      { key: 'name',      label: lang === 'hi' ? 'नाम'        : 'Name',           icon: 'person',                step: 1 },
+      { key: 'ageGender', label: lang === 'hi' ? 'उम्र / लिंग' : 'Age / Gender',   icon: 'cake',                  step: 2 },
+      { key: 'mobile',    label: lang === 'hi' ? 'मोबाइल'     : 'Mobile',          icon: 'phone',                 step: 3 },
+      { key: 'symptoms',  label: lang === 'hi' ? 'तकलीफ'      : 'Symptoms',        icon: 'healing',               step: 4, full: !compact },
+      { key: 'agni',      label: lang === 'hi' ? 'अग्नि'      : 'Agni / Appetite', icon: 'local_fire_department', step: 5 },
     ];
     return (
       <div className={`grid ${compact ? 'grid-cols-3' : 'grid-cols-2'} gap-2.5 content-start`}>
@@ -616,10 +613,11 @@ export default function PatientIntake({ onNavigate, onTriage }) {
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-headline-sm text-headline-sm text-on-surface">🎙️ Guided Voice Registration</h2>
+                <h2 className="font-headline-sm text-headline-sm text-on-surface">Guided Voice Registration</h2>
                 <span className="font-body-md text-body-md text-on-surface-variant">/ बोलकर विवरण भरें</span>
+                <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-label-sm text-label-sm">Sarvam Bulbul v3 + Saaras v3</span>
               </div>
-              <p className="font-body-sm text-body-sm text-on-surface-variant">Step-by-step voice intake · Chrome mic required</p>
+              <p className="font-body-sm text-body-sm text-on-surface-variant">AI-powered Hindi + English voice · works in all browsers</p>
             </div>
           </div>
           {wizardStep >= 1 && wizardStep <= 5 && (
@@ -657,7 +655,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
                   <span className="material-symbols-outlined text-[18px]">play_arrow</span>
                   <span>Start Voice Intake / शुरू करें</span>
                 </button>
-                <p className="font-body-sm text-body-sm text-on-surface-variant text-center">Works in Chrome/Edge only</p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant text-center">Works in all browsers via Sarvam AI</p>
               </div>
               <div className="flex flex-col gap-3 flex-1">
                 <p className="font-body-md text-body-md text-on-surface">
@@ -716,7 +714,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
 
                   <p className="font-label-md text-label-md text-on-surface-variant text-center">
                     {wizardListening
-                      ? (lang === 'hi' ? '🎙️ सुन रहे हैं — बोलें…' : '🎙️ Listening — speak now…')
+                      ? (lang === 'hi' ? '🎙️ सुन रहे हैं — बोलें…' : '🎙️ Recording — speak now…')
                       : wizardPaused
                       ? (lang === 'hi' ? '⏸️ रुका हुआ' : '⏸️ Paused')
                       : (lang === 'hi' ? '⏳ तैयारी में…' : '⏳ Preparing…')}
@@ -730,30 +728,15 @@ export default function PatientIntake({ onNavigate, onTriage }) {
                     </div>
                   )}
 
-                  {/* Repeat / manual tap buttons */}
+                  {/* Repeat + Tap & Speak */}
                   <div className="flex gap-2 w-full">
                     <button onClick={repeatCurrentStep} className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-on-primary font-label-md text-label-md hover:bg-primary-container transition-colors shadow-sm">
                       <span className="material-symbols-outlined text-[16px]">replay</span>
                       <span>{lang === 'hi' ? 'दोबारा' : 'Repeat'}</span>
                     </button>
-                    {/* Manual tap-to-speak fallback */}
                     {!wizardListening && !wizardPaused && (
                       <button
-                        onPointerDown={() => {
-                          window.speechSynthesis?.cancel();
-                          const rec = startRec({
-                            lang,
-                            onStart: () => setWizardListening(true),
-                            onEnd: () => setWizardListening(false),
-                            onError: (code) => {
-                              setWizardListening(false);
-                              if (code === 'not-allowed') setWizardError('Microphone access denied. Allow mic in Chrome settings.');
-                              else if (code !== 'aborted') setWizardError(`Error: ${code}. Try again.`);
-                            },
-                            onResult: (t) => { setWizardError(''); processWizardResult(wizardStepRef.current, t); },
-                          });
-                          wizardRecRef.current = rec;
-                        }}
+                        onClick={tapAndSpeak}
                         className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm"
                       >
                         <span className="material-symbols-outlined text-primary text-[16px]">mic</span>
@@ -848,7 +831,6 @@ export default function PatientIntake({ onNavigate, onTriage }) {
                 {ocrChips.length > 0 ? 'AI Extracted' : 'Awaiting Upload'}
               </span>
             </div>
-
             {ocrChips.length > 0 ? (
               <div className="flex flex-col gap-2.5">
                 {ocrChips.map((chip, i) => (
@@ -891,7 +873,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
           </div>
         </div>
 
-        {/* RIGHT: Freeform Chat (Feature B) */}
+        {/* RIGHT: Chat (Feature B) */}
         <div className="lg:col-span-6 flex flex-col gap-4">
           <div className="bg-surface-container-lowest rounded-2xl shadow-sm flex flex-col h-[780px] overflow-hidden ring-1 ring-surface-container-high">
             {/* Chat header */}
@@ -904,7 +886,7 @@ export default function PatientIntake({ onNavigate, onTriage }) {
                   <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-tertiary-container shadow-sm" />
                 </div>
                 <div className="flex flex-col">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-title-md text-title-md text-on-surface font-semibold">AYUSH Sahayak</span>
                     <span className="font-body-sm text-on-surface-variant">(आयुष सहायक)</span>
                     {chatIntakeStep < CHAT_INTAKE.length && (
@@ -913,12 +895,10 @@ export default function PatientIntake({ onNavigate, onTriage }) {
                       </span>
                     )}
                     {chatIntakeStep >= CHAT_INTAKE.length && (
-                      <span className="px-2 py-0.5 rounded-full bg-tertiary-container/40 text-on-tertiary-container font-label-sm text-label-sm">
-                        Free Chat
-                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-tertiary-container/40 text-on-tertiary-container font-label-sm text-label-sm">Free Chat</span>
                     )}
                   </div>
-                  <span className="font-label-sm text-label-sm text-primary font-medium">AI Clinical Triage Assistant • Freeform Chat</span>
+                  <span className="font-label-sm text-label-sm text-primary font-medium">Sarvam Bulbul v3 TTS · Saaras v3 STT · Gemini 3.6 Flash</span>
                 </div>
               </div>
               <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm shadow-sm">
@@ -986,21 +966,23 @@ export default function PatientIntake({ onNavigate, onTriage }) {
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 font-label-sm text-label-sm text-primary">
                   <span className={`w-2 h-2 rounded-full bg-primary ${isListening ? 'animate-ping' : ''}`} />
-                  {isListening ? 'Listening… (बोल रहे हैं)' : `${lang === 'hi' ? 'Hindi (हिंदी)' : 'English'} • tap mic or type`}
+                  {isListening
+                    ? 'Recording… tap mic to stop'
+                    : `${lang === 'hi' ? 'Hindi (हिंदी)' : 'English'} · tap mic or type`}
                 </span>
-                <span className="font-label-sm text-label-sm text-on-surface-variant">Rural voice optimized</span>
+                <span className="font-label-sm text-label-sm text-on-surface-variant">Sarvam Saaras v3 STT</span>
               </div>
               <div className="flex items-center gap-2.5">
                 <button
-                  className={`flex items-center justify-center w-12 h-12 rounded-2xl text-on-primary shadow-sm flex-shrink-0 transition-all ${isListening ? 'bg-secondary animate-pulse' : 'bg-primary hover:bg-primary-container'}`}
-                  onClick={startListening} title="बोलने के लिए दबाएं" type="button"
+                  className={`flex items-center justify-center w-12 h-12 rounded-2xl text-on-primary shadow-sm flex-shrink-0 transition-all ${isListening ? 'bg-secondary animate-pulse scale-110' : 'bg-primary hover:bg-primary-container'}`}
+                  onClick={startListening} title="Tap to record" type="button"
                 >
-                  <span className="material-symbols-outlined text-[24px]">mic</span>
+                  <span className="material-symbols-outlined text-[24px]">{isListening ? 'stop' : 'mic'}</span>
                 </button>
                 <div className="flex-1 relative flex items-center">
                   <input
                     className="w-full h-12 pl-4 pr-12 rounded-xl bg-surface-container-low text-on-surface placeholder:text-on-surface-variant font-body-md text-body-md focus:outline-none focus:bg-surface-container transition-all"
-                    placeholder={lang === 'hi' ? 'यहाँ लिखें या माइक दबाएं…' : 'Type symptoms or tap mic…'}
+                    placeholder={lang === 'hi' ? 'यहाँ लिखें या माइक दबाएं…' : 'Type here or tap mic to speak…'}
                     value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={handleKeyDown} type="text"
                   />
                   <button className="absolute right-2 w-8 h-8 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-sm hover:bg-primary-container transition-colors" onClick={handleSend} type="button">

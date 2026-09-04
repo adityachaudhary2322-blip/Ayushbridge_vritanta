@@ -2,18 +2,29 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const SARVAM_KEY = process.env.SARVAM_API_KEY;
 
 if (!GEMINI_KEY) {
   console.warn('⚠️  GEMINI_API_KEY not set — AI endpoints will use static fallbacks');
 } else {
   console.log(`✓  GEMINI_API_KEY loaded (${GEMINI_KEY.slice(0, 6)}...)`);
 }
+if (!SARVAM_KEY) {
+  console.warn('⚠️  SARVAM_API_KEY not set — TTS/STT endpoints will return errors');
+} else {
+  console.log(`✓  SARVAM_API_KEY loaded (${SARVAM_KEY.slice(0, 6)}...)`);
+}
 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_KEY}`;
+const SARVAM_TTS_URL = 'https://api.sarvam.ai/text-to-speech';
+const SARVAM_STT_URL = 'https://api.sarvam.ai/speech-to-text';
 
 app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json({ limit: '25mb' }));
@@ -21,6 +32,7 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 const globalPatients = [];
 
+// ── Gemini helper ─────────────────────────────────────────────────────────────
 async function gemini(systemPrompt, userText, jsonMode = false) {
   const body = {
     system_instruction: { parts: [{ text: systemPrompt }] },
@@ -64,13 +76,85 @@ P3 = chronic/moderate, standard consult
 P4 = wellness/preventive/routine
 Flag geneticAlert=true if family history of hereditary conditions is mentioned.`;
 
-// Detect language from transcript text or context hint
 function isHindiInput(transcript, context) {
   if (context?.lang === 'hi') return true;
   return /[ऀ-ॿ]/.test(transcript);
 }
 
-// POST /api/ask-followup
+// ── POST /api/sarvam-tts ──────────────────────────────────────────────────────
+app.post('/api/sarvam-tts', async (req, res) => {
+  const { text, lang } = req.body;
+  if (!text) return res.status(400).json({ error: 'text is required' });
+  if (!SARVAM_KEY) return res.status(503).json({ error: 'SARVAM_API_KEY not configured' });
+
+  try {
+    const response = await fetch(SARVAM_TTS_URL, {
+      method: 'POST',
+      headers: {
+        'api-subscription-key': SARVAM_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        language_code: lang === 'hi' ? 'hi-IN' : 'en-IN',
+        model: 'bulbul:v3',
+        speaker: 'shubh',
+        pace: 0.95
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Sarvam TTS ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const audioBase64 = data.audios?.[0];
+    if (!audioBase64) throw new Error('No audio returned from Sarvam TTS');
+
+    res.json({ success: true, audio: `data:audio/wav;base64,${audioBase64}` });
+  } catch (err) {
+    console.error('Sarvam TTS error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── POST /api/sarvam-stt ──────────────────────────────────────────────────────
+app.post('/api/sarvam-stt', upload.single('audio'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'audio file is required' });
+  if (!SARVAM_KEY) return res.status(503).json({ error: 'SARVAM_API_KEY not configured' });
+
+  try {
+    const formData = new FormData();
+    const blob = new Blob([req.file.buffer], { type: req.file.mimetype || 'audio/webm' });
+    formData.append('file', blob, 'audio.webm');
+    formData.append('model', 'saaras:v3');
+    formData.append('mode', 'transcribe');
+    formData.append('language_code', 'unknown');
+
+    const response = await fetch(SARVAM_STT_URL, {
+      method: 'POST',
+      headers: { 'api-subscription-key': SARVAM_KEY },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Sarvam STT ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const transcript = data.transcript?.trim() || '';
+    if (!transcript) throw new Error('Empty transcript from Sarvam STT');
+
+    res.json({ success: true, transcript });
+  } catch (err) {
+    console.error('Sarvam STT error:', err.message);
+    res.status(500).json({ success: false, error: err.message, transcript: '' });
+  }
+});
+
+// ── POST /api/ask-followup ────────────────────────────────────────────────────
 app.post('/api/ask-followup', async (req, res) => {
   const { transcript, context, langHint: clientLangHint } = req.body;
   if (!transcript) return res.json({ question: 'Please describe your symptoms.' });
@@ -78,7 +162,6 @@ app.post('/api/ask-followup', async (req, res) => {
   const hindi = isHindiInput(transcript, context);
 
   try {
-    // Use frontend-detected mode hint when available (handles Hinglish correctly)
     const langHint = clientLangHint || (hindi
       ? 'You MUST respond in Hindi (Devanagari script).'
       : 'You MUST respond in English.');
@@ -96,7 +179,7 @@ app.post('/api/ask-followup', async (req, res) => {
   }
 });
 
-// POST /api/triage
+// ── POST /api/triage ──────────────────────────────────────────────────────────
 app.post('/api/triage', async (req, res) => {
   const { conversation, patientId, lang } = req.body;
   const conversationText = Array.isArray(conversation)
@@ -106,7 +189,6 @@ app.post('/api/triage', async (req, res) => {
   try {
     const raw = await gemini(TRIAGE_SYSTEM, conversationText, true);
     const parsed = JSON.parse(raw);
-
     const patient = {
       id: patientId || `P${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -114,9 +196,7 @@ app.post('/api/triage', async (req, res) => {
       conversation: conversationText,
       ...parsed
     };
-
     globalPatients.unshift(patient);
-
     res.json(patient);
   } catch (err) {
     console.error('triage error:', err.message);
@@ -138,10 +218,9 @@ app.post('/api/triage', async (req, res) => {
   }
 });
 
-// POST /api/ocr — Gemini Vision document analysis (receives base64 JSON)
+// ── POST /api/ocr — Gemini Vision ────────────────────────────────────────────
 app.post('/api/ocr', async (req, res) => {
-  const { fileData, mimeType, fileName } = req.body;
-
+  const { fileData, mimeType } = req.body;
   if (!fileData) {
     return res.json({ meds: 'Metformin 500mg BD', labs: 'HbA1c 8.9% (HIGH)', summary: 'Demo data (no file uploaded)' });
   }
@@ -165,17 +244,14 @@ Return ONLY a valid JSON object with these exact three fields:
       }],
       generationConfig: { responseMimeType: 'application/json' }
     };
-
     const response = await fetch(GEMINI_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-
     if (!response.ok) throw new Error(`Gemini OCR ${response.status}`);
     const data = await response.json();
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
     res.json({
       meds: parsed.meds || 'None detected',
       labs: parsed.labs || 'None detected',
@@ -187,7 +263,7 @@ Return ONLY a valid JSON object with these exact three fields:
   }
 });
 
-// POST /api/zoom/create
+// ── POST /api/zoom/create ─────────────────────────────────────────────────────
 app.post('/api/zoom/create', async (req, res) => {
   const { topic, patientName } = req.body;
   try {
@@ -229,7 +305,7 @@ app.post('/api/zoom/create', async (req, res) => {
   }
 });
 
-// GET /api/patients
+// ── GET /api/patients ─────────────────────────────────────────────────────────
 app.get('/api/patients', (req, res) => {
   res.json(globalPatients);
 });
