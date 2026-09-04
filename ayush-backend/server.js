@@ -408,11 +408,11 @@ app.post('/api/upload-mobile', upload.single('document'), async (req, res) => {
   const base64 = req.file.buffer.toString('base64');
   const isPdfName = req.file.originalname.toLowerCase().endsWith('.pdf');
 
-  // Mobile pickers frequently send 'application/octet-stream' for PDFs — sanitize.
-  let mimeType = req.file.mimetype || 'image/jpeg';
-  if (isPdfName || mimeType === 'application/octet-stream') {
-    if (isPdfName) mimeType = 'application/pdf';
-  }
+  // Sanitize MIME: mobile pickers often send 'application/octet-stream' for PDFs.
+  // Gemini Vision needs the correct type or it 500s — force application/pdf by extension.
+  const mimeType = (req.file.mimetype === 'application/pdf' || isPdfName)
+    ? 'application/pdf'
+    : (req.file.mimetype || 'image/jpeg');
 
   // Mark as processing so the kiosk can show a spinner while Gemini works
   sessionDocs.set(sessionId, { status: 'processing', fileName: req.file.originalname });

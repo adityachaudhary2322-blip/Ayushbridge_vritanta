@@ -309,11 +309,12 @@ export default function TouchlessKiosk() {
   // Chip / typed answer → advance the current stage
   const submitTyped = () => acceptAnswer(stageRef.current, typedAnswer);
 
-  // When a document lands during the inquiry stage → show chips, wait 2s, auto-advance
+  // When a document lands during the inquiry stage → show chips, then GUARANTEE an
+  // advance so the kiosk can never stay stuck (manual green button also available).
   useEffect(() => {
     if (docChoice === 'yes' && stage === 'has_documents' && docResult?.status === 'ready' && !docAdvancedRef.current) {
       docAdvancedRef.current = true;
-      const t = setTimeout(() => advanceFromDocs(), 2000);
+      const t = setTimeout(() => advanceFromDocs(), 2500);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -517,7 +518,7 @@ export default function TouchlessKiosk() {
                   ) : (
                     <div className="w-full flex flex-col items-center gap-3 bg-surface-container-lowest rounded-2xl p-5 shadow-sm ring-1 ring-surface-container-high">
                       {docResult?.status === 'ready' ? (
-                        <div className="w-full flex flex-col items-center gap-2">
+                        <div className="w-full flex flex-col items-center gap-3">
                           <div className="flex items-center gap-2 text-primary">
                             <span className="material-symbols-outlined text-[24px]">check_circle</span>
                             <span className="font-title-md text-title-md font-semibold">{lang === 'hi' ? 'दस्तावेज़ मिला!' : 'Document Received!'}</span>
@@ -531,7 +532,11 @@ export default function TouchlessKiosk() {
                               ))}
                             </div>
                           )}
-                          <span className="font-label-md text-label-md text-on-surface-variant">{lang === 'hi' ? 'आगे बढ़ रहे हैं…' : 'Continuing…'}</span>
+                          {/* Guaranteed manual advance — user is never trapped */}
+                          <button onClick={advanceFromDocs} className="px-5 py-3.5 rounded-xl bg-green-600 text-white font-label-lg text-label-lg shadow-md hover:bg-green-700 transition-colors flex items-center gap-2">
+                            {lang === 'hi' ? 'आगे बढ़ें: अग्नि एवं कोष्ठ' : 'Continue to Agni & Koshtha'}
+                            <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+                          </button>
                         </div>
                       ) : (
                         <>

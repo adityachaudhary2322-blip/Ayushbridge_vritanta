@@ -406,11 +406,12 @@ export default function TeleConsultRoom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Upload lands during the inquiry stage → chips shown, wait 2s, auto-advance
+  // Upload lands during the inquiry stage → chips shown, then GUARANTEE an advance
+  // so the call can never stay stuck (manual green button also available).
   useEffect(() => {
     if (docChoice === 'yes' && stage === 'has_documents' && docResult?.status === 'ready' && !docAdvancedRef.current) {
       docAdvancedRef.current = true;
-      const t = setTimeout(() => advanceFromDocs(), 2000);
+      const t = setTimeout(() => advanceFromDocs(), 2500);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -573,7 +574,7 @@ export default function TeleConsultRoom() {
             ) : (
               <div className="bg-white rounded-2xl p-4 flex flex-col items-center gap-2.5 shadow-xl max-w-sm">
                 {docResult?.status === 'ready' ? (
-                  <div className="flex flex-col items-center gap-2 text-neutral-900">
+                  <div className="flex flex-col items-center gap-3 text-neutral-900">
                     <div className="flex items-center gap-2 text-green-600">
                       <span className="material-symbols-outlined text-[22px]">check_circle</span>
                       <span className="font-title-md text-title-md font-semibold">{lang === 'hi' ? 'दस्तावेज़ मिला!' : 'Document Received!'}</span>
@@ -587,7 +588,11 @@ export default function TeleConsultRoom() {
                         ))}
                       </div>
                     )}
-                    <span className="font-label-md text-label-md text-neutral-500">{lang === 'hi' ? 'आगे बढ़ रहे हैं…' : 'Continuing…'}</span>
+                    {/* Guaranteed manual advance — patient is never trapped */}
+                    <button onClick={advanceFromDocs} className="px-5 py-3 rounded-xl bg-green-600 text-white font-label-lg text-label-lg shadow-md hover:bg-green-700 transition-colors flex items-center gap-2">
+                      {lang === 'hi' ? 'आगे बढ़ें: अग्नि एवं कोष्ठ' : 'Continue to Agni & Koshtha'}
+                      <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                    </button>
                   </div>
                 ) : (
                   <>
