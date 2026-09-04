@@ -142,7 +142,7 @@ export default function VideoConsult({ onClose, initialMessages = [], lang = 'en
         });
         if (res.ok) {
           const data = await res.json();
-          setTriageResult(data);
+          setTriageResult(data.record || data);
         }
       } catch {}
       setIsTriaging(false);

@@ -1,9 +1,20 @@
 import { useState } from 'react'
+import { Routes, Route } from 'react-router-dom'
 import AuthPortal from './components/AuthPortal'
 import PatientIntake from './components/PatientIntake'
 import DoctorDashboard from './components/DoctorDashboard'
+import MobileScan from './components/MobileScan'
 
 export default function App() {
+  return (
+    <Routes>
+      <Route path="/mobile-scan" element={<MobileScan />} />
+      <Route path="*" element={<KioskApp />} />
+    </Routes>
+  )
+}
+
+function KioskApp() {
   const [currentView, setCurrentView] = useState('auth')
   const [userRole, setUserRole] = useState(null) // 'patient' | 'doctor' | null
   const [triageData, setTriageData] = useState(null)

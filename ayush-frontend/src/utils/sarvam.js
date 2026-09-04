@@ -7,28 +7,39 @@ export function detectMode(text) {
   return 'english';
 }
 
-// Sarvam Bulbul v3 TTS — resolves when audio finishes (or fallback timeout)
-export async function sarvamTTS(text, lang) {
+// Sarvam Bulbul v3 TTS — resolves when audio finishes (or fallback timeout).
+// A genuine network/backend failure calls onNetworkError; a browser autoplay
+// block is NOT treated as an error (it just resolves quietly).
+export async function sarvamTTS(text, lang, { onNetworkError } = {}) {
   if (!text?.trim()) return;
+  let data;
   try {
     const res = await fetch('/api/sarvam-tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text.slice(0, 500), lang: lang === 'hi' ? 'hi' : 'en' }),
+      body: JSON.stringify({ text: text.slice(0, 1500), lang: lang === 'hi' ? 'hi' : 'en' }),
     });
     if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data.audio) throw new Error('No audio in response');
-    await new Promise((resolve) => {
-      const audio = new Audio(data.audio);
-      const fallback = setTimeout(resolve, Math.max(3000, text.length * 58 + 800));
-      audio.onended = () => { clearTimeout(fallback); resolve(); };
-      audio.onerror  = () => { clearTimeout(fallback); resolve(); };
-      audio.play().catch(resolve); // autoplay-blocked → resolve immediately
-    });
+    data = await res.json();
+    if (!data.success || !data.audio) throw new Error('No audio in response');
   } catch (err) {
-    console.warn('[sarvamTTS]', err.message);
+    // Network / backend failure — surface to caller, do not block the flow
+    console.error('[sarvamTTS] network:', err.message);
+    onNetworkError?.(err);
+    return;
   }
+  // Playback is decoupled from the fetch: an autoplay block must never read as an error
+  await new Promise((resolve) => {
+    const audio = new Audio(data.audio);
+    const fallback = setTimeout(resolve, Math.max(3000, text.length * 58 + 800));
+    audio.onended = () => { clearTimeout(fallback); resolve(); };
+    audio.onerror = () => { clearTimeout(fallback); resolve(); };
+    audio.play().catch((playErr) => {
+      console.warn('[sarvamTTS] autoplay deferred until user interaction:', playErr?.message);
+      clearTimeout(fallback);
+      resolve();
+    });
+  });
 }
 
 // Sarvam Saaras v3 STT — records via MediaRecorder, transcribes via backend

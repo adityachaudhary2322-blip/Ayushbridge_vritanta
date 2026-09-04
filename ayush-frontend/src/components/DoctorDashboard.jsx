@@ -3,7 +3,7 @@ import ClinicalBriefingModal from './ClinicalBriefingModal';
 import PatientAdviceDrawer from './PatientAdviceDrawer';
 import CaseReportModal from './CaseReportModal';
 
-const API = 'http://localhost:5000/api';
+const API = '/api';
 
 export default function DoctorDashboard({ latestPatient, onNavigate }) {
   const [patients, setPatients] = useState([]);
@@ -13,10 +13,12 @@ export default function DoctorDashboard({ latestPatient, onNavigate }) {
   const [showAdvice, setShowAdvice] = useState(false);
   const [showCaseReport, setShowCaseReport] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [openDocsId, setOpenDocsId] = useState(null);   // which patient card's docs accordion is open
+  const [docModal, setDocModal] = useState(null);        // documents record shown in inspection modal
 
   useEffect(() => {
     fetchPatients();
-    const interval = setInterval(fetchPatients, 15000);
+    const interval = setInterval(fetchPatients, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -26,10 +28,17 @@ export default function DoctorDashboard({ latestPatient, onNavigate }) {
 
   const fetchPatients = async () => {
     try {
-      const res = await fetch(`${API}/patients`);
+      const res = await fetch(`${API}/doctor/queue`);
       const data = await res.json();
-      setPatients(data);
-    } catch { /* ignore */ }
+      if (Array.isArray(data)) setPatients(data);
+    } catch { /* ignore — keep last-known queue */ }
+  };
+
+  const PRIORITY_BADGE = {
+    P1: 'bg-error-container text-on-error-container',
+    P2: 'bg-secondary-fixed text-on-secondary-fixed-variant',
+    P3: 'bg-surface-container-high text-primary',
+    P4: 'bg-surface-container-high text-tertiary',
   };
 
   const handleZoom = async (patient) => {
@@ -206,71 +215,164 @@ export default function DoctorDashboard({ latestPatient, onNavigate }) {
             </div>
           </div>
 
-          {/* Live Patient Queue — new from API */}
+          {/* Live Triage Queue — patient records from /api/doctor/queue */}
           {patients.length > 0 && (
             <section className="flex flex-col gap-4">
               <div className="flex items-center gap-2 px-1">
                 <span className="font-headline-sm text-headline-sm text-on-surface">Live Triage Queue</span>
-                <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-primary font-label-sm text-label-sm">{patients.length} New Records</span>
+                <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-primary font-label-sm text-label-sm">{patients.length} New Record{patients.length > 1 ? 's' : ''}</span>
+                <span className="inline-flex items-center gap-1 font-label-sm text-label-sm text-tertiary ml-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span> auto-refresh 10s
+                </span>
               </div>
-              <div className="w-full bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-surface-container-high/40 text-on-surface-variant font-label-md text-label-md">
-                        <th className="py-3 px-4 font-semibold">Priority</th>
-                        <th className="py-3 px-4 font-semibold">Chief Complaint</th>
-                        <th className="py-3 px-4 font-semibold">Meds / Labs</th>
-                        <th className="py-3 px-4 text-right font-semibold">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-surface-container-high/60">
-                      {patients.map((p) => (
-                        <tr key={p.id} className="hover:bg-surface-container-low transition-colors">
-                          <td className="py-3 px-4 align-top">
-                            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-label-sm text-label-sm font-semibold ${
-                              p.triageLevel === 'P1' ? 'bg-error-container text-on-error-container' :
-                              p.triageLevel === 'P2' ? 'bg-secondary-fixed text-on-secondary-fixed-variant' :
-                              p.triageLevel === 'P3' ? 'bg-surface-container-high text-primary' :
-                              'bg-surface-container-high text-tertiary'
-                            }`}>
-                              {p.surgicalAlert && <span className="w-2 h-2 rounded-full bg-error animate-ping"></span>}
-                              {p.triageLevel} — {p.triageLabel}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 align-top max-w-xs">
-                            <p className="font-body-md text-body-md text-on-surface font-medium">{p.chiefComplaint}</p>
-                            {p.surgicalAlert && (
-                              <span className="text-error font-label-sm text-label-sm flex items-center gap-1 mt-1">
-                                <span className="material-symbols-outlined text-[14px]">warning</span> Surgical Alert
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {patients.map((p) => {
+                  const docs = p.documents;
+                  const ocr = docs?.ocrData;
+                  const hasDocs = !!ocr;
+                  const isOpen = openDocsId === p.id;
+                  return (
+                    <div key={p.id} className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden ring-1 ring-surface-container-high">
+                      {/* Card header: priority + demographics */}
+                      <div className="p-4 flex items-start justify-between gap-3 border-b border-surface-container-high">
+                        <div className="flex flex-col gap-1.5">
+                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-label-sm text-label-sm font-semibold w-fit ${PRIORITY_BADGE[p.triageLevel] || PRIORITY_BADGE.P3}`}>
+                            {p.surgicalAlert && <span className="w-2 h-2 rounded-full bg-error animate-ping"></span>}
+                            {p.triageLevel} — {p.triageLabel}
+                          </div>
+                          <span className="font-title-md text-title-md text-on-surface font-semibold">{p.name}</span>
+                          <span className="font-body-sm text-body-sm text-on-surface-variant">
+                            {p.age !== 'N/A' ? `${p.age}` : '—'}{p.gender !== 'N/A' ? ` • ${p.gender}` : ''}{p.phone !== 'N/A' ? ` • 📱 ${p.phone}` : ''}
+                          </span>
+                        </div>
+                        {hasDocs && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary font-label-sm text-label-sm shrink-0">
+                            <span className="material-symbols-outlined text-[14px]">attach_file</span> Docs
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Body */}
+                      <div className="p-4 flex flex-col gap-3">
+                        <div>
+                          <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Chief Complaint</span>
+                          <p className="font-body-md text-body-md text-on-surface font-medium">{p.chiefComplaint}</p>
+                        </div>
+
+                        {/* Ayurvedic assessment chips */}
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { l: 'Dosha', v: p.dosha, icon: 'balance' },
+                            { l: 'Agni', v: p.agni || p.ayurvedicNotes?.agni, icon: 'local_fire_department' },
+                            { l: 'Koshtha', v: p.koshtha || p.ayurvedicNotes?.koshtha, icon: 'gastroenterology' },
+                          ].filter(x => x.v).map(x => (
+                            <span key={x.l} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-low text-on-surface font-label-sm text-label-sm">
+                              <span className="material-symbols-outlined text-[14px] text-primary">{x.icon}</span>
+                              <span className="text-on-surface-variant">{x.l}:</span> {x.v}
+                            </span>
+                          ))}
+                        </div>
+
+                        {p.redFlags && p.redFlags !== 'None' && (
+                          <div className="inline-flex items-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-error-container/40 text-on-error-container font-label-sm text-label-sm w-fit">
+                            <span className="material-symbols-outlined text-error text-[15px]">warning</span> {p.redFlags}
+                          </div>
+                        )}
+
+                        {/* Meds / Labs */}
+                        {(p.meds !== 'None' || p.labs !== 'None') && (
+                          <div className="font-body-sm text-body-sm text-on-surface-variant">
+                            {p.meds !== 'None' && <div><strong className="text-on-surface">Meds:</strong> {p.meds}</div>}
+                            {p.labs !== 'None' && <div className="text-secondary"><strong>Labs:</strong> {p.labs}</div>}
+                          </div>
+                        )}
+
+                        {/* Documents accordion */}
+                        {hasDocs && (
+                          <div className="rounded-xl bg-surface-container-low overflow-hidden">
+                            <button
+                              onClick={() => setOpenDocsId(isOpen ? null : p.id)}
+                              className="w-full px-3.5 py-2.5 flex items-center justify-between gap-2 hover:bg-surface-container transition-colors"
+                            >
+                              <span className="inline-flex items-center gap-2 font-label-md text-label-md text-on-surface">
+                                <span className="material-symbols-outlined text-primary text-[18px]">folder_open</span>
+                                Prescriptions &amp; Lab Reports
+                                <span className="px-1.5 py-0.5 rounded-full bg-surface-container-high text-primary font-label-sm text-label-sm">{ocr.documentType || 'Document'}</span>
                               </span>
+                              <span className="material-symbols-outlined text-on-surface-variant text-[20px]">{isOpen ? 'expand_less' : 'expand_more'}</span>
+                            </button>
+                            {isOpen && (
+                              <div className="px-3.5 pb-3.5 flex flex-col gap-3">
+                                {ocr.medicines?.length > 0 && (
+                                  <div className="flex flex-col gap-1.5">
+                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Extracted Medicines</span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {ocr.medicines.map((m, i) => (
+                                        <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-label-sm text-label-sm">
+                                          <span className="material-symbols-outlined text-[13px]">medication</span>
+                                          {m.name}{m.dosage ? ` — ${m.dosage}` : ''}
+                                          {m.ayushCategory && m.ayushCategory !== 'Unknown' && (
+                                            <span className="px-1 py-0.5 rounded bg-surface-container-high text-on-surface-variant text-[10px] ml-0.5">{m.ayushCategory}</span>
+                                          )}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {ocr.abnormalLabValues?.length > 0 && (
+                                  <div className="flex flex-col gap-1.5">
+                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Abnormal Lab Values</span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {ocr.abnormalLabValues.map((l, i) => (
+                                        <span key={i} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-label-sm text-label-sm ${
+                                          l.flag === 'High' ? 'bg-error-container text-on-error-container' :
+                                          l.flag === 'Low' ? 'bg-secondary-fixed text-on-secondary-fixed-variant' :
+                                          'bg-secondary-container/40 text-on-secondary-container'
+                                        }`}>
+                                          <span className="material-symbols-outlined text-[13px]">science</span>
+                                          {l.test}: {l.value} {l.flag && `(${l.flag})`}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {ocr.clinicalImpressions && (
+                                  <div className="flex flex-col gap-1">
+                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Doctor Impression</span>
+                                    <p className="font-body-sm text-body-sm text-on-surface">{ocr.clinicalImpressions}</p>
+                                  </div>
+                                )}
+                                {docs.fileBase64 && (
+                                  <button
+                                    onClick={() => setDocModal(docs)}
+                                    className="mt-1 self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm"
+                                  >
+                                    <span className="material-symbols-outlined text-primary text-[16px]">visibility</span>
+                                    View Original Document
+                                  </button>
+                                )}
+                              </div>
                             )}
-                          </td>
-                          <td className="py-3 px-4 align-top text-on-surface-variant font-body-sm text-body-sm">
-                            <div>{p.meds}</div>
-                            <div className="text-secondary">{p.labs}</div>
-                          </td>
-                          <td className="py-3 px-4 align-top text-right">
-                            <div className="flex flex-col items-end gap-1.5">
-                              <button onClick={() => openBriefing(p)} className="px-3 py-1.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md flex items-center gap-1.5 shadow-sm transition-all">
-                                <span className="material-symbols-outlined text-[16px]">clinical_notes</span>
-                                <span>Briefing</span>
-                              </button>
-                              <button onClick={() => handleZoom(p)} className="px-3 py-1.5 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-sm text-label-sm flex items-center gap-1 transition-colors" disabled={zoomLoading}>
-                                <span className="material-symbols-outlined text-[15px]">videocam</span>
-                                <span>{zoomLoading ? 'Creating...' : 'Zoom'}</span>
-                              </button>
-                              <button onClick={() => openCaseReport(p)} className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm flex items-center gap-1 transition-colors">
-                                <span className="material-symbols-outlined text-[15px]">description</span>
-                                <span>Case Report</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                          </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <button onClick={() => openBriefing(p)} className="px-3 py-1.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md flex items-center gap-1.5 shadow-sm transition-all">
+                            <span className="material-symbols-outlined text-[16px]">clinical_notes</span> Briefing
+                          </button>
+                          <button onClick={() => handleZoom(p)} disabled={zoomLoading} className="px-3 py-1.5 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
+                            <span className="material-symbols-outlined text-[15px]">videocam</span> {zoomLoading ? 'Creating…' : 'Zoom'}
+                          </button>
+                          <button onClick={() => openCaseReport(p)} className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
+                            <span className="material-symbols-outlined text-[15px]">description</span> Case Report
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}
@@ -519,6 +621,39 @@ export default function DoctorDashboard({ latestPatient, onNavigate }) {
         onClose={() => setShowCaseReport(false)}
         patient={selectedPatient}
       />
+
+      {/* Document Inspection Modal */}
+      {docModal && (
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDocModal(null)}>
+          <div className="w-full max-w-2xl bg-surface-container-lowest rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3.5 flex items-center justify-between border-b border-surface-container-high bg-surface-container-low">
+              <div className="flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-primary text-[22px]">description</span>
+                <div>
+                  <h3 className="font-title-md text-title-md text-on-surface font-semibold">{docModal.fileName || 'Original Document'}</h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">{docModal.ocrData?.documentType || 'Uploaded via mobile scan'}</p>
+                </div>
+              </div>
+              <button onClick={() => setDocModal(null)} className="w-9 h-9 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface flex items-center justify-center transition-colors">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+            <div className="p-4 overflow-auto bg-surface/40 flex items-center justify-center">
+              {docModal.mimeType?.startsWith('image/') ? (
+                <img src={docModal.fileBase64} alt="original document" className="max-w-full max-h-[70vh] rounded-xl shadow-sm object-contain" />
+              ) : docModal.mimeType === 'application/pdf' ? (
+                <iframe src={docModal.fileBase64} title="original document" className="w-full h-[70vh] rounded-xl bg-white" />
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-12 text-on-surface-variant">
+                  <span className="material-symbols-outlined text-[48px]">draft</span>
+                  <p className="font-body-md text-body-md">Preview unavailable for this file type.</p>
+                  <a href={docModal.fileBase64} download={docModal.fileName} className="px-4 py-2 rounded-xl bg-primary text-on-primary font-label-md text-label-md">Download</a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

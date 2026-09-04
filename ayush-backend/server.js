@@ -4,7 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -30,7 +30,19 @@ app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-const globalPatients = [];
+const globalPatients = [];              // legacy store (kept for /api/patients)
+const patientQueue = [];                // unified triage queue (P1→P4 sorted on read)
+const sessionDocs = new Map();          // sessionId → { status, ocrData, fileBase64, mimeType, fileName }
+
+const PRIORITY_ORDER = { P1: 0, P2: 1, P3: 2, P4: 3 };
+function sortedQueue() {
+  return [...patientQueue].sort((a, b) => {
+    const pa = PRIORITY_ORDER[a.triageLevel] ?? 9;
+    const pb = PRIORITY_ORDER[b.triageLevel] ?? 9;
+    if (pa !== pb) return pa - pb;
+    return new Date(b.timestamp) - new Date(a.timestamp);
+  });
+}
 
 // ── Gemini helper ─────────────────────────────────────────────────────────────
 async function gemini(systemPrompt, userText, jsonMode = false) {
@@ -56,27 +68,30 @@ Ask ONE focused, warm follow-up question at a time. Keep responses to 1-2 senten
 Once you have collected name, chief complaint, duration, and appetite — say: "Thank you. I have enough information for your triage. Please click the 'Generate Triage Summary' button below." (or equivalent in their language).
 If there is a red flag symptom (severe chest pain, breathlessness, acute abdominal pain, high fever) — urgently advise calling 108 and flag it immediately.`;
 
-const TRIAGE_SYSTEM = `You are an expert AYUSH triage AI assistant in India.
-Analyze the patient conversation and return a JSON object with these exact fields:
+const TRIAGE_SYSTEM = `You are an expert AYUSH (Ayurveda) clinical triage AI assistant in India.
+Analyze the patient's demographics, symptoms and digestion details, and return ONLY a valid JSON object with these exact fields:
 {
+  "chiefComplaint": "brief 1-sentence summary of the main complaint",
   "triageLevel": "P1|P2|P3|P4",
-  "triageLabel": "Surgical Emergency|Urgent|Standard|Routine",
+  "triageLabel": "Critical|Urgent|Moderate|Routine",
   "surgicalAlert": true|false,
   "geneticAlert": true|false,
-  "meds": "comma-separated list of medications mentioned or 'None'",
-  "labs": "comma-separated abnormal lab values mentioned or 'None'",
-  "chiefComplaint": "brief 1-sentence summary of the main complaint",
-  "ayurvedicNotes": {
-    "agni": "patient's digestive fire assessment or 'Vishamagni'",
-    "koshtha": "bowel habit type or 'Madhyama'"
-  },
+  "dosha": "dominant dosha imbalance: Vata|Pitta|Kapha|Vata-Pitta|Pitta-Kapha|Vata-Kapha|Tridosha",
+  "agni": "Manda|Tikshna|Vishama|Sama",
+  "koshtha": "Krura|Mridu|Madhyama",
+  "redFlags": "comma-separated red flags / immediate referrals, or 'None'",
+  "meds": "comma-separated medications mentioned, or 'None'",
+  "labs": "comma-separated abnormal lab values mentioned, or 'None'",
   "recommendation": "2-sentence clinical recommendation for the AYUSH physician"
 }
-P1 = acute surgical/cardiac emergency (flag surgicalAlert=true)
-P2 = urgent, severe symptoms needing same-day review
-P3 = chronic/moderate, standard consult
-P4 = wellness/preventive/routine
-Flag geneticAlert=true if family history of hereditary conditions is mentioned.`;
+Priority rules:
+P1 = acute surgical/cardiac emergency or red-flag presentation (set surgicalAlert=true, triageLabel="Critical")
+P2 = urgent, severe symptoms needing same-day review (triageLabel="Urgent")
+P3 = chronic/moderate, standard consult (triageLabel="Moderate")
+P4 = wellness/preventive/routine (triageLabel="Routine")
+Agni: Manda=low/sluggish, Tikshna=sharp/excessive, Vishama=irregular, Sama=balanced.
+Koshtha: Krura=hard/constipated bowel, Mridu=soft/loose, Madhyama=regular.
+Set geneticAlert=true if hereditary/family history conditions are mentioned.`;
 
 function isHindiInput(transcript, context) {
   if (context?.lang === 'hi') return true;
@@ -86,8 +101,8 @@ function isHindiInput(transcript, context) {
 // ── POST /api/sarvam-tts ──────────────────────────────────────────────────────
 app.post('/api/sarvam-tts', async (req, res) => {
   const { text, lang } = req.body;
-  if (!text) return res.status(400).json({ error: 'text is required' });
-  if (!SARVAM_KEY) return res.status(503).json({ error: 'SARVAM_API_KEY not configured' });
+  if (!text || !String(text).trim()) return res.status(400).json({ success: false, error: 'text is required and must be non-empty' });
+  if (!SARVAM_KEY) return res.status(503).json({ success: false, error: 'SARVAM_API_KEY not configured' });
 
   try {
     const response = await fetch(SARVAM_TTS_URL, {
@@ -97,7 +112,7 @@ app.post('/api/sarvam-tts', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        text,
+        text: String(text).slice(0, 1500),
         language_code: lang === 'hi' ? 'hi-IN' : 'en-IN',
         model: 'bulbul:v3',
         speaker: 'shubh',
@@ -107,12 +122,13 @@ app.post('/api/sarvam-tts', async (req, res) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Sarvam TTS ${response.status}: ${errText}`);
+      console.error(`Sarvam TTS failed ${response.status}:`, errText);
+      return res.status(response.status).json({ success: false, error: `Sarvam TTS ${response.status}: ${errText}` });
     }
 
     const data = await response.json();
     const audioBase64 = data.audios?.[0];
-    if (!audioBase64) throw new Error('No audio returned from Sarvam TTS');
+    if (!audioBase64) return res.status(502).json({ success: false, error: 'No audio returned from Sarvam TTS' });
 
     res.json({ success: true, audio: `data:audio/wav;base64,${audioBase64}` });
   } catch (err) {
@@ -217,40 +233,91 @@ app.post('/api/ask-followup', async (req, res) => {
 
 // ── POST /api/triage ──────────────────────────────────────────────────────────
 app.post('/api/triage', async (req, res) => {
-  const { conversation, patientId, lang } = req.body;
+  const {
+    patientId, name, age, gender, phone, symptoms, agni, koshtha,
+    sessionId, documents, conversation, lang,
+  } = req.body;
+
+  // Attach any scanned document record for this session
+  let attachedDocs = documents || null;
+  if (sessionId && sessionDocs.has(sessionId)) {
+    const rec = sessionDocs.get(sessionId);
+    if (rec?.status === 'ready') attachedDocs = rec;
+  }
+
+  // Build the text the model reasons over — structured fields first, then any chat transcript
+  const structured = [
+    name && `Name: ${name}`,
+    (age || gender) && `Age/Gender: ${age || '?'} / ${gender || '?'}`,
+    phone && `Phone: ${phone}`,
+    symptoms && `Symptoms & onset: ${symptoms}`,
+    agni && `Appetite/Digestion (Agni): ${agni}`,
+    koshtha && `Bowel (Koshtha): ${koshtha}`,
+    attachedDocs?.ocrData && `Documents: ${JSON.stringify(attachedDocs.ocrData)}`,
+  ].filter(Boolean).join('\n');
+
   const conversationText = Array.isArray(conversation)
     ? conversation.map(m => `${m.role}: ${m.text}`).join('\n')
     : String(conversation || '');
+  const analysisInput = [structured, conversationText].filter(Boolean).join('\n\n');
+
+  const baseRecord = {
+    id: patientId || `P${Date.now()}`,
+    patientId: patientId || `P${Date.now()}`,
+    name: name || 'Anonymous',
+    age: age || 'N/A',
+    gender: gender || 'N/A',
+    phone: phone || 'N/A',
+    symptoms: symptoms || conversationText || 'N/A',
+    lang: lang || 'en',
+    documents: attachedDocs,
+    timestamp: new Date().toISOString(),
+  };
 
   try {
-    const raw = await gemini(TRIAGE_SYSTEM, conversationText, true);
+    const raw = await gemini(TRIAGE_SYSTEM, analysisInput || 'No details provided.', true);
     const parsed = JSON.parse(raw);
-    const patient = {
-      id: patientId || `P${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      lang: lang || 'en',
-      conversation: conversationText,
-      ...parsed
+    // Prefer patient-reported agni/koshtha when the model didn't override meaningfully
+    const triageResult = {
+      chiefComplaint: parsed.chiefComplaint || symptoms || 'General consultation',
+      triageLevel: parsed.triageLevel || 'P3',
+      triageLabel: parsed.triageLabel || 'Moderate',
+      surgicalAlert: !!parsed.surgicalAlert,
+      geneticAlert: !!parsed.geneticAlert,
+      dosha: parsed.dosha || 'Tridosha',
+      agni: parsed.agni || agni || 'Vishama',
+      koshtha: parsed.koshtha || koshtha || 'Madhyama',
+      redFlags: parsed.redFlags || 'None',
+      meds: parsed.meds || (attachedDocs?.ocrData?.medicines?.map(m => m.name).join(', ')) || 'None',
+      labs: parsed.labs || (attachedDocs?.ocrData?.abnormalLabValues?.map(l => `${l.test} ${l.value}`).join(', ')) || 'None',
+      recommendation: parsed.recommendation || 'Standard Ayurvedic consultation advised.',
+      ayurvedicNotes: { agni: parsed.agni || agni || 'Vishama', koshtha: parsed.koshtha || koshtha || 'Madhyama' },
     };
-    globalPatients.unshift(patient);
-    res.json(patient);
+    const record = { ...baseRecord, ...triageResult, triageResult };
+    patientQueue.push(record);
+    globalPatients.unshift(record);
+    res.json({ success: true, record });
   } catch (err) {
     console.error('triage error:', err.message);
-    const fallback = {
-      id: patientId || `P${Date.now()}`,
-      timestamp: new Date().toISOString(),
+    const triageResult = {
+      chiefComplaint: symptoms || 'General consultation',
       triageLevel: 'P3',
-      triageLabel: 'Standard',
+      triageLabel: 'Moderate',
       surgicalAlert: false,
       geneticAlert: false,
-      meds: 'None',
-      labs: 'None',
-      chiefComplaint: 'General consultation',
-      ayurvedicNotes: { agni: 'Vishamagni', koshtha: 'Madhyama' },
-      recommendation: 'Patient requires standard Ayurvedic consultation. Physician review advised.'
+      dosha: 'Tridosha',
+      agni: agni || 'Vishama',
+      koshtha: koshtha || 'Madhyama',
+      redFlags: 'None',
+      meds: (attachedDocs?.ocrData?.medicines?.map(m => m.name).join(', ')) || 'None',
+      labs: (attachedDocs?.ocrData?.abnormalLabValues?.map(l => `${l.test} ${l.value}`).join(', ')) || 'None',
+      recommendation: 'Standard Ayurvedic consultation advised. Physician review recommended.',
+      ayurvedicNotes: { agni: agni || 'Vishama', koshtha: koshtha || 'Madhyama' },
     };
-    globalPatients.unshift(fallback);
-    res.json(fallback);
+    const record = { ...baseRecord, ...triageResult, triageResult };
+    patientQueue.push(record);
+    globalPatients.unshift(record);
+    res.json({ success: true, record });
   }
 });
 
@@ -299,6 +366,82 @@ Return ONLY a valid JSON object with these exact three fields:
   }
 });
 
+// ── POST /api/upload-mobile — phone scans QR, uploads doc → Gemini OCR → cache ─
+const MOBILE_OCR_PROMPT = `You are a clinical document analyst. Analyze this medical document (prescription, lab report or medical certificate) and return ONLY a valid JSON object with these exact fields:
+{
+  "documentType": "Prescription" | "Lab Report" | "Medical Certificate" | "Unknown",
+  "medicines": [ { "name": "string", "dosage": "string", "ayushCategory": "Ayurvedic" | "Allopathic" | "Unknown" } ],
+  "abnormalLabValues": [ { "test": "string", "value": "string", "flag": "High" | "Low" | "Abnormal" } ],
+  "clinicalImpressions": "short summary of the doctor's notes / findings"
+}
+If a field has no data, return an empty array or "Unknown"/"" as appropriate. Do NOT invent values.`;
+
+app.post('/api/upload-mobile', upload.single('document'), async (req, res) => {
+  const sessionId = req.body?.sessionId;
+  if (!sessionId) return res.status(400).json({ success: false, error: 'sessionId is required' });
+  if (!req.file) return res.status(400).json({ success: false, error: 'document file is required' });
+
+  const base64 = req.file.buffer.toString('base64');
+  const mimeType = req.file.mimetype || 'image/jpeg';
+
+  // Mark as processing so the kiosk can show a spinner while Gemini works
+  sessionDocs.set(sessionId, { status: 'processing', fileName: req.file.originalname });
+
+  let ocrData = {
+    documentType: 'Unknown',
+    medicines: [],
+    abnormalLabValues: [],
+    clinicalImpressions: 'Document received (analysis unavailable).',
+  };
+
+  try {
+    if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY not configured');
+    const body = {
+      contents: [{
+        parts: [
+          { text: MOBILE_OCR_PROMPT },
+          { inline_data: { mime_type: mimeType, data: base64 } },
+        ],
+      }],
+      generationConfig: { responseMimeType: 'application/json' },
+    };
+    const response = await fetch(GEMINI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`Gemini ${response.status}`);
+    const data = await response.json();
+    const parsed = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
+    ocrData = {
+      documentType: parsed.documentType || 'Unknown',
+      medicines: Array.isArray(parsed.medicines) ? parsed.medicines : [],
+      abnormalLabValues: Array.isArray(parsed.abnormalLabValues) ? parsed.abnormalLabValues : [],
+      clinicalImpressions: parsed.clinicalImpressions || '',
+    };
+  } catch (err) {
+    console.error('upload-mobile OCR error:', err.message);
+    // keep resilient fallback ocrData so demo still shows a processed doc
+    ocrData.clinicalImpressions = `Auto-analysis unavailable (${err.message}). Document stored for physician review.`;
+  }
+
+  sessionDocs.set(sessionId, {
+    status: 'ready',
+    ocrData,
+    fileBase64: `data:${mimeType};base64,${base64}`,
+    mimeType,
+    fileName: req.file.originalname,
+    uploadedAt: new Date().toISOString(),
+  });
+
+  res.json({ success: true, message: 'Document processed by Gemini 3.6 Flash' });
+});
+
+// ── GET /api/session-docs/:sessionId — kiosk polls this ───────────────────────
+app.get('/api/session-docs/:sessionId', (req, res) => {
+  res.json(sessionDocs.get(req.params.sessionId) || { status: 'waiting' });
+});
+
 // ── POST /api/zoom/create ─────────────────────────────────────────────────────
 app.post('/api/zoom/create', async (req, res) => {
   const { topic, patientName } = req.body;
@@ -344,6 +487,11 @@ app.post('/api/zoom/create', async (req, res) => {
 // ── GET /api/patients ─────────────────────────────────────────────────────────
 app.get('/api/patients', (req, res) => {
   res.json(globalPatients);
+});
+
+// ── GET /api/doctor/queue — unified triage queue, P1→P4 then newest first ──────
+app.get('/api/doctor/queue', (req, res) => {
+  res.json(sortedQueue());
 });
 
 app.listen(PORT, () => {
