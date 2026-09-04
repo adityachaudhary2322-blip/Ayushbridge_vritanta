@@ -26,7 +26,7 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 const SARVAM_TTS_URL = 'https://api.sarvam.ai/text-to-speech';
 const SARVAM_STT_URL = 'https://api.sarvam.ai/speech-to-text';
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
@@ -49,10 +49,12 @@ async function gemini(systemPrompt, userText, jsonMode = false) {
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
-const FOLLOWUP_SYSTEM = `You are an empathetic Ayurvedic intake assistant in India.
-Respond strictly in the patient's language (Hindi or English, match their input).
-Ask ONE short, high-yield follow-up question probing their symptoms and Agni/Koshtha status.
-Keep your response to 1-2 spoken sentences maximum. Be warm and reassuring.`;
+const FOLLOWUP_SYSTEM = `You are an empathetic AYUSH Ayurvedic intake assistant conducting a clinical interview in India.
+Your goal is to systematically collect: patient name, age, gender, chief complaint with duration, Agni/appetite (Mandagni/Samagni/Tikshna), any red flags (chest pain, breathlessness, severe sudden pain), and current medications.
+Match the patient's language exactly — Hindi Devanagari if they use it, English or Roman Hinglish otherwise. NEVER mix scripts.
+Ask ONE focused, warm follow-up question at a time. Keep responses to 1-2 sentences maximum.
+Once you have collected name, chief complaint, duration, and appetite — say: "Thank you. I have enough information for your triage. Please click the 'Generate Triage Summary' button below." (or equivalent in their language).
+If there is a red flag symptom (severe chest pain, breathlessness, acute abdominal pain, high fever) — urgently advise calling 108 and flag it immediately.`;
 
 const TRIAGE_SYSTEM = `You are an expert AYUSH triage AI assistant in India.
 Analyze the patient conversation and return a JSON object with these exact fields:
@@ -156,20 +158,54 @@ app.post('/api/sarvam-stt', upload.single('audio'), async (req, res) => {
 
 // ── POST /api/ask-followup ────────────────────────────────────────────────────
 app.post('/api/ask-followup', async (req, res) => {
-  const { transcript, context, langHint: clientLangHint } = req.body;
-  if (!transcript) return res.json({ question: 'Please describe your symptoms.' });
+  const { transcript, history, langHint } = req.body;
+  if (!transcript && (!Array.isArray(history) || history.length === 0)) {
+    return res.json({ question: 'Please describe your symptoms.' });
+  }
 
-  const hindi = isHindiInput(transcript, context);
+  const hindi = isHindiInput(transcript || '', {});
 
   try {
-    const langHint = clientLangHint || (hindi
-      ? 'You MUST respond in Hindi (Devanagari script).'
-      : 'You MUST respond in English.');
-    const contextStr = context ? `\n\nContext: ${JSON.stringify(context)}` : '';
-    const userInput = `${transcript}${contextStr}\n\n${langHint}`;
-    const question = await gemini(FOLLOWUP_SYSTEM, userInput);
-    if (!question.trim()) throw new Error('Empty response from Gemini');
-    res.json({ question: question.trim() });
+    let contents;
+    if (Array.isArray(history) && history.length > 0) {
+      // Build multi-turn Gemini conversation from full message history
+      const mapped = history.map(m => ({
+        role: m.role === 'ai' ? 'model' : 'user',
+        parts: [{ text: m.text }],
+      }));
+      // Gemini requires starting with a user turn — drop leading model turns
+      let start = 0;
+      while (start < mapped.length && mapped[start].role === 'model') start++;
+      contents = mapped.slice(start);
+      // Append langHint to last user message if provided
+      if (langHint && contents.length > 0) {
+        const last = contents[contents.length - 1];
+        if (last.role === 'user') {
+          last.parts[0].text += `\n\n[Instruction: ${langHint}]`;
+        }
+      }
+      // Ensure last message is user (add transcript if needed)
+      if (contents.length === 0 || contents[contents.length - 1].role === 'model') {
+        contents.push({ role: 'user', parts: [{ text: transcript + (langHint ? `\n\n[Instruction: ${langHint}]` : '') }] });
+      }
+    } else {
+      contents = [{ role: 'user', parts: [{ text: transcript + (langHint ? `\n\n[Instruction: ${langHint}]` : '') }] }];
+    }
+
+    const body = {
+      system_instruction: { parts: [{ text: FOLLOWUP_SYSTEM }] },
+      contents,
+    };
+    const response = await fetch(GEMINI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`Gemini error: ${response.status}`);
+    const data = await response.json();
+    const question = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    if (!question) throw new Error('Empty response from Gemini');
+    res.json({ question });
   } catch (err) {
     console.error('ask-followup error:', err.message);
     const fallback = hindi

@@ -10,7 +10,8 @@ export default function App() {
 
   const handleNavigate = (view) => {
     if (view === 'patient') setUserRole('patient')
-    else if (view === 'doctor') setUserRole('doctor')
+    // Navigating to doctor from patient context keeps patient role but shows dashboard (staff demo)
+    else if (view === 'doctor' && userRole !== 'patient') setUserRole('doctor')
     setCurrentView(view)
   }
 
@@ -93,16 +94,17 @@ export default function App() {
           />
         )}
 
-        {currentView === 'doctor' && userRole === 'doctor' && (
+        {/* Allow doctor role OR patient in staff-demo mode to see doctor dashboard */}
+        {currentView === 'doctor' && (userRole === 'doctor' || userRole === 'patient') && (
           <DoctorDashboard
             latestPatient={triageData}
             onNavigate={handleNavigate}
           />
         )}
 
-        {/* Guard: wrong role trying to access protected view */}
+        {/* Guard: unauthenticated user accessing a protected view */}
         {((currentView === 'patient' && userRole !== 'patient') ||
-          (currentView === 'doctor' && userRole !== 'doctor')) && (
+          (currentView === 'doctor' && !userRole)) && (
           <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
             <span className="material-symbols-outlined text-[64px] text-on-surface-variant">lock</span>
             <p className="font-headline-sm text-headline-sm text-on-surface">Access Denied</p>
