@@ -12,7 +12,7 @@ const Q = {
   complaint: { en: 'What health problem are you facing, and since how many days?',                      hi: 'आपको क्या स्वास्थ्य समस्या है, और कितने दिनों से है?' },
   agni:      { en: 'How is your appetite and digestion? Any constipation or irregular bowels?',        hi: 'आपकी भूख और पाचन कैसा है? कब्ज या अनियमित पेट तो नहीं?' },
 };
-const REPROMPT = { en: "Sorry, I didn't catch that. Please speak again.", hi: 'माफ़ कीजिए, मैं समझ नहीं पाया। कृपया दोबारा बोलें।' };
+const REPROMPT = { en: 'Please speak a bit louder.', hi: 'कृपया थोड़ा ज़ोर से बोलें।' };
 const STAGE_LABEL = {
   name: { en: 'Name', hi: 'नाम' }, ageGender: { en: 'Age & Gender', hi: 'उम्र व लिंग' },
   mobile: { en: 'Mobile', hi: 'मोबाइल' }, complaint: { en: 'Complaint', hi: 'तकलीफ' }, agni: { en: 'Agni / Koshtha', hi: 'अग्नि / कोष्ठ' },
@@ -92,14 +92,23 @@ export default function TouchlessKiosk() {
     setBotStatus('listening');
     setTranscript('');
     recordUntilSilence({
-      silenceMs: 3000,
-      maxMs: 12000,
-      onStart: () => {},
+      silenceMs: 1500,   // stop 1.5s after the patient goes quiet
+      maxMs: 8000,       // hard cap so it never hangs
+      langCode: langRef.current === 'hi' ? 'hi-IN' : 'en-IN',
       onStop: () => setBotStatus('thinking'),
       onResult: (t) => { setTranscript(t); resolve(t); },
-      onError: () => resolve(null),
+      onError: (code) => {
+        if (code === 'not-allowed') {
+          setError(langRef.current === 'hi'
+            ? 'माइक्रोफ़ोन की अनुमति चाहिए — कृपया अनुमति दें और पुनः प्रयास करें।'
+            : 'Microphone permission needed — please allow it and try again.');
+        } else if (code === 'network') {
+          netErr();
+        }
+        resolve(null);
+      },
     }).then((rec) => { recRef.current = rec; });
-  }), []);
+  }), [netErr]);
 
   const storeAnswer = useCallback((stageKey, text) => {
     const f = { ...fieldsRef.current };
@@ -175,6 +184,11 @@ export default function TouchlessKiosk() {
     if (started) return;
     setStarted(true);
     activeRef.current = true;
+    // Unlock browser audio within the user gesture so TTS can auto-play hands-free
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) { const ctx = new Ctx(); ctx.resume?.().catch(() => {}); }
+    } catch { /* ignore */ }
     runConversation();
   };
 
@@ -311,9 +325,11 @@ export default function TouchlessKiosk() {
 
               {/* Controls */}
               {!started ? (
-                <button onClick={begin} className="px-10 py-5 rounded-full bg-primary text-on-primary font-headline-sm text-headline-sm shadow-xl hover:bg-primary-container transition-all flex items-center gap-3 animate-pulse">
-                  <span className="material-symbols-outlined text-[32px]">touch_app</span>
-                  {lang === 'hi' ? 'शुरू करने के लिए छुएं' : 'Tap to Begin'}
+                <button onClick={begin} className="px-8 sm:px-10 py-5 rounded-full bg-primary text-on-primary font-title-md text-title-md sm:font-headline-sm sm:text-headline-sm shadow-xl hover:bg-primary-container transition-all flex items-center gap-3 animate-pulse text-center">
+                  <span className="material-symbols-outlined text-[32px]">mic</span>
+                  {lang === 'hi'
+                    ? '🎙️ परामर्श शुरू करें — एक बार टैप करें'
+                    : '🎙️ Tap Once to Begin Touchless Consultation'}
                 </button>
               ) : (
                 <button

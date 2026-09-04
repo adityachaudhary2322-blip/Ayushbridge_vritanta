@@ -138,37 +138,44 @@ app.post('/api/sarvam-tts', async (req, res) => {
 });
 
 // ── POST /api/sarvam-stt ──────────────────────────────────────────────────────
-app.post('/api/sarvam-stt', upload.single('audio'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'audio file is required' });
-  if (!SARVAM_KEY) return res.status(503).json({ error: 'SARVAM_API_KEY not configured' });
-
+// upload.any() so we accept the file under either field name ('file' or 'audio').
+app.post('/api/sarvam-stt', upload.any(), async (req, res) => {
   try {
+    const uploadedFile = req.files?.[0];
+    if (!uploadedFile) {
+      console.error('No audio file received in /api/sarvam-stt');
+      return res.status(400).json({ success: false, error: 'No audio file uploaded' });
+    }
+    if (!SARVAM_KEY) return res.status(503).json({ success: false, error: 'SARVAM_API_KEY not configured' });
+
+    // 'unknown' lets Saaras auto-detect Hindi/English; caller may override.
+    const lang = req.body?.language_code || 'unknown';
     const formData = new FormData();
-    const blob = new Blob([req.file.buffer], { type: req.file.mimetype || 'audio/webm' });
-    formData.append('file', blob, 'audio.webm');
+    const audioBlob = new Blob([uploadedFile.buffer], { type: uploadedFile.mimetype || 'audio/webm' });
+
+    // Sarvam strictly requires the field name 'file'
+    formData.append('file', audioBlob, 'recording.webm');
     formData.append('model', 'saaras:v3');
     formData.append('mode', 'transcribe');
-    formData.append('language_code', 'unknown');
+    formData.append('language_code', lang);
 
-    const response = await fetch(SARVAM_STT_URL, {
+    const sarvamResp = await fetch(SARVAM_STT_URL, {
       method: 'POST',
       headers: { 'api-subscription-key': SARVAM_KEY },
-      body: formData
+      body: formData,
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Sarvam STT ${response.status}: ${errText}`);
+    const data = await sarvamResp.json().catch(() => ({}));
+    if (!sarvamResp.ok) {
+      console.error('Sarvam STT Error:', sarvamResp.status, data);
+      return res.status(sarvamResp.status).json({ success: false, error: data });
     }
 
-    const data = await response.json();
-    const transcript = data.transcript?.trim() || '';
-    if (!transcript) throw new Error('Empty transcript from Sarvam STT');
-
-    res.json({ success: true, transcript });
+    console.log('Captured Patient Transcript:', data.transcript);
+    return res.json({ success: true, transcript: data.transcript || '' });
   } catch (err) {
-    console.error('Sarvam STT error:', err.message);
-    res.status(500).json({ success: false, error: err.message, transcript: '' });
+    console.error('STT Server Route Exception:', err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

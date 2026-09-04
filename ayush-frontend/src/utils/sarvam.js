@@ -43,7 +43,7 @@ export async function sarvamTTS(text, lang, { onNetworkError } = {}) {
 }
 
 // Sarvam Saaras v3 STT — records via MediaRecorder, transcribes via backend
-export async function recordAndTranscribe({ onResult, onError, onStart, onStop, maxMs = 6000 }) {
+export async function recordAndTranscribe({ onResult, onError, onStart, onStop, maxMs = 6000, langCode }) {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const chunks = [];
@@ -60,7 +60,8 @@ export async function recordAndTranscribe({ onResult, onError, onStart, onStop, 
       const blob = new Blob(chunks, { type: mime || 'audio/webm' });
       if (blob.size < 400) { onError?.('empty'); return; }
       const fd = new FormData();
-      fd.append('audio', blob, 'audio.webm');
+      fd.append('file', blob, 'voice.webm');
+      if (langCode) fd.append('language_code', langCode);
       try {
         const res = await fetch('/api/sarvam-stt', { method: 'POST', body: fd });
         if (!res.ok) throw new Error(`STT HTTP ${res.status}`);
@@ -89,7 +90,7 @@ export async function recordAndTranscribe({ onResult, onError, onStart, onStop, 
 // Hands-free recorder: auto-stops after `silenceMs` of quiet once speech is
 // detected (or at `maxMs` hard cap). Returns the MediaRecorder so the caller can
 // stop it early on a manual tap. Transcribes via /api/sarvam-stt.
-export async function recordUntilSilence({ onResult, onError, onStart, onStop, silenceMs = 3000, maxMs = 12000 }) {
+export async function recordUntilSilence({ onResult, onError, onStart, onStop, silenceMs = 1500, maxMs = 8000, langCode }) {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const chunks = [];
@@ -148,7 +149,8 @@ export async function recordUntilSilence({ onResult, onError, onStart, onStop, s
       const blob = new Blob(chunks, { type: mime || 'audio/webm' });
       if (blob.size < 500) { onError?.('empty'); return; }
       const fd = new FormData();
-      fd.append('audio', blob, 'audio.webm');
+      fd.append('file', blob, 'voice.webm');
+      if (langCode) fd.append('language_code', langCode);
       try {
         const res = await fetch('/api/sarvam-stt', { method: 'POST', body: fd });
         if (!res.ok) throw new Error(`STT HTTP ${res.status}`);
