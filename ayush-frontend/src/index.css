@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body { margin: 0; padding: 0; }
+  body { overscroll-behavior: none; }
+  ::-webkit-scrollbar { display: none; }
+}
+
+/* Pastel utility classes for AYUSH triage UI */
+.bg-cream { background-color: #FAF9F6; }
+.bg-mint  { background-color: #EAF2EC; }
+.bg-blush { background-color: #FFE8E8; }
