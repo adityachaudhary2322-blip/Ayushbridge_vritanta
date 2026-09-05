@@ -119,57 +119,64 @@ export function classifyHand(lm) {
 export function createSmoother({ windowSize = 8, confidenceThreshold = 0.7, cooldownMs = 1200 } = {}) {
   let window = [];
   let lastCommitTime = 0;
-  let lastCommittedSign = null;
+  let lastCommitted = null;
 
   const trim = () => { if (window.length > windowSize) window = window.slice(-windowSize); };
 
   return {
-    /** @returns {{sign:string, confidence:number}|null} committed sign, if any */
-    push(sign, confidence) {
-      if (!sign || confidence < confidenceThreshold) {
-        window.push({ sign: '_LOW_CONF_', confidence });
+    /** @returns {{shape:string, confidence:number}|null} committed shape, if any */
+    push(shape, confidence) {
+      if (!shape || confidence < confidenceThreshold) {
+        window.push({ shape: '_LOW_CONF_', confidence });
         trim();
-        if (!sign) lastCommittedSign = null;   // hand left the frame → allow a repeat
+        if (!shape) lastCommitted = null;   // hand left the frame → allow a repeat
         return null;
       }
 
-      window.push({ sign, confidence });
+      window.push({ shape, confidence });
       trim();
       if (window.length < windowSize) return null;
 
       // Majority vote across the window
       const counts = new Map();
       for (const p of window) {
-        if (p.sign === '_LOW_CONF_') continue;
-        counts.set(p.sign, (counts.get(p.sign) || 0) + 1);
+        if (p.shape === '_LOW_CONF_') continue;
+        counts.set(p.shape, (counts.get(p.shape) || 0) + 1);
       }
       if (!counts.size) return null;
 
       let best = null;
       let bestCount = 0;
-      for (const [s, c] of counts) if (c > bestCount) { best = s; bestCount = c; }
+      for (const [sh, c] of counts) if (c > bestCount) { best = sh; bestCount = c; }
       if (bestCount < Math.floor(windowSize / 2) + 1) return null;
 
       const now = Date.now();
       if (now - lastCommitTime < cooldownMs) return null;
-      if (best === lastCommittedSign) return null;   // duplicate suppression
+      if (best === lastCommitted) return null;   // duplicate suppression
 
-      const avg = window.filter(p => p.sign === best).reduce((a, p) => a + p.confidence, 0) / bestCount;
+      const avg = window.filter(p => p.shape === best).reduce((a, p) => a + p.confidence, 0) / bestCount;
       lastCommitTime = now;
-      lastCommittedSign = best;
+      lastCommitted = best;
       window = [];
-      return { sign: best, confidence: avg };
+      return { shape: best, confidence: avg };
     },
 
     /** Fraction of the smoothing window that currently agrees — drives the UI meter. */
     stability() {
       if (!window.length) return 0;
       const counts = new Map();
-      for (const p of window) counts.set(p.sign, (counts.get(p.sign) || 0) + 1);
+      for (const p of window) counts.set(p.shape, (counts.get(p.shape) || 0) + 1);
       return Math.max(...counts.values()) / windowSize;
     },
 
-    reset() { window = []; lastCommitTime = 0; lastCommittedSign = null; },
+    reset() { window = []; lastCommitTime = 0; lastCommitted = null; },
+
+    /**
+     * Clears the voting window but REMEMBERS the last committed shape, so a hand
+     * still frozen in the previous answer cannot immediately answer the next
+     * question too. It re-arms once the patient changes shape or drops the hand.
+     */
+    softReset() { window = []; lastCommitTime = Date.now(); },
   };
 }
 

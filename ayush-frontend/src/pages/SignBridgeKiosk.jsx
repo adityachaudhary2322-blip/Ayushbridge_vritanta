@@ -111,18 +111,44 @@ export default function SignBridgeKiosk() {
   const rafRef = useRef(0);
   const visionRef = useRef(null);
   const advanceRef = useRef(0);
+  const tickRef = useRef(0);
+  const shapeRef = useRef(null);
 
   const [smoother] = useState(() => createSmoother({ windowSize: 8, confidenceThreshold: 0.7, cooldownMs: 1000 }));
 
+  // Milliseconds left on a pending auto-advance — drives the countdown banner.
+  const [advanceMs, setAdvanceMs] = useState(0);
+
   const stageIndex = STAGES.indexOf(stage);
-  const gestureStage = stage === 'complaint' || stage === 'nidra' || stage === 'agni';
+
+  const clearAdvance = useCallback(() => {
+    clearTimeout(advanceRef.current);
+    clearInterval(tickRef.current);
+    setAdvanceMs(0);
+  }, []);
 
   // ── Stage navigation ───────────────────────────────────────────────────────
   const goTo = useCallback((next) => {
-    clearTimeout(advanceRef.current);
-    smoother.reset();
+    clearAdvance();
+    // Soft reset: a hand still held in the previous answer must change shape
+    // before it can answer the next question.
+    smoother.softReset();
     setStage(next);
-  }, [smoother]);
+  }, [smoother, clearAdvance]);
+
+  // Schedules a hands-free hop to the next stage and counts it down on screen.
+  const scheduleAdvance = useCallback((next, delay) => {
+    clearTimeout(advanceRef.current);
+    clearInterval(tickRef.current);
+    const startedAt = Date.now();
+    setAdvanceMs(delay);
+    tickRef.current = setInterval(() => {
+      const left = Math.max(0, delay - (Date.now() - startedAt));
+      setAdvanceMs(left);
+      if (left <= 0) clearInterval(tickRef.current);
+    }, 100);
+    advanceRef.current = setTimeout(() => goTo(next), delay);
+  }, [goTo]);
 
   const goNext = useCallback(() => {
     goTo(STAGES[Math.min(STAGES.indexOf(stage) + 1, STAGES.length - 1)]);
@@ -132,30 +158,12 @@ export default function SignBridgeKiosk() {
     goTo(STAGES[Math.max(STAGES.indexOf(stage) - 1, 0)]);
   }, [stage, goTo]);
 
-  // Sleep / digestion answers move the patient along on their own after a beat,
-  // so a signing patient never has to hunt for a button.
-  const answerAndAdvance = useCallback((setter, id, next) => {
+  // Every answer — gestured or tapped — locks in and moves on by itself, so a
+  // patient who cannot use a mouse never has to reach for one.
+  const answerAndAdvance = useCallback((setter, id, next, delay) => {
     setter(id);
-    clearTimeout(advanceRef.current);
-    advanceRef.current = setTimeout(() => goTo(next), 1400);
-  }, [goTo]);
-
-  // ── Gesture → answer, resolved against whatever stage is on screen ─────────
-  const onShape = useCallback((shape) => {
-    if (stage === 'complaint') {
-      const hit = COMPLAINTS.find(c => c.shape === shape);
-      if (hit) setComplaint(hit.id);
-    } else if (stage === 'nidra') {
-      const hit = SLEEP_OPTIONS.find(o => o.shapes.includes(shape));
-      if (hit) answerAndAdvance(setSleep, hit.id, 'agni');
-    } else if (stage === 'agni') {
-      const hit = AGNI_OPTIONS.find(o => o.shapes.includes(shape));
-      if (hit) answerAndAdvance(setDigestion, hit.id, 'details');
-    }
-  }, [stage, answerAndAdvance]);
-
-  const shapeRef = useRef(onShape);
-  useEffect(() => { shapeRef.current = onShape; }, [onShape]);
+    scheduleAdvance(next, delay);
+  }, [scheduleAdvance]);
 
   // ── Camera lifecycle ───────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
@@ -239,7 +247,7 @@ export default function SignBridgeKiosk() {
 
           const committed = smoother.push(prediction?.shape || null, prediction?.confidence || 0);
           setStability(smoother.stability());
-          if (committed) shapeRef.current(committed.shape);
+          if (committed) shapeRef.current?.(committed.shape);
         }
         rafRef.current = requestAnimationFrame(loop);
       };
@@ -253,6 +261,7 @@ export default function SignBridgeKiosk() {
   useEffect(() => () => {
     cancelAnimationFrame(rafRef.current);
     clearTimeout(advanceRef.current);
+    clearInterval(tickRef.current);
     streamRef.current?.getTracks().forEach(track => track.stop());
     visionRef.current?.close();
   }, []);
@@ -324,6 +333,38 @@ export default function SignBridgeKiosk() {
       setSubmitting(false);
     }
   };
+
+  // Guest fast-path — for a patient who cannot type at all.
+  const quickGuestToken = useCallback(() => {
+    setForm(f => ({
+      ...f,
+      name: f.name.trim() || 'Divyang Patient (Divyang Jan)',
+      age: f.age || '30',
+    }));
+    setSubmitError('');
+    scheduleAdvance('summary', 1200);
+  }, [scheduleAdvance]);
+
+  // ── Gesture → action, resolved against whatever stage is on screen ────────
+  const onShape = useCallback((shape) => {
+    if (stage === 'complaint') {
+      const hit = COMPLAINTS.find(c => c.shape === shape);
+      if (hit) answerAndAdvance(setComplaint, hit.id, 'nidra', 1500);
+    } else if (stage === 'nidra') {
+      const hit = SLEEP_OPTIONS.find(o => o.shapes.includes(shape));
+      if (hit) answerAndAdvance(setSleep, hit.id, 'agni', 1200);
+    } else if (stage === 'agni') {
+      const hit = AGNI_OPTIONS.find(o => o.shapes.includes(shape));
+      if (hit) answerAndAdvance(setDigestion, hit.id, 'details', 1200);
+    } else if (stage === 'details') {
+      if (shape === 'THUMBS_UP') quickGuestToken();
+    } else if (stage === 'summary') {
+      if (shape === 'THUMBS_UP' && !submitting) submit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, answerAndAdvance, quickGuestToken, submitting]);
+
+  useEffect(() => { shapeRef.current = onShape; }, [onShape]);
 
   const restart = () => {
     setResult(null); setComplaint(null); setSleep(null); setDigestion(null);
@@ -421,14 +462,7 @@ export default function SignBridgeKiosk() {
                 </div>
               )}
 
-              {cameraOn && !gestureStage && (
-                <div className="absolute inset-0 bg-slate-900/80 flex flex-col items-center justify-center gap-2 p-4 text-center">
-                  <span className="material-symbols-outlined text-[44px] text-slate-400">edit</span>
-                  <p className="text-base font-bold text-slate-200">{t('No gesture needed for this step', 'इस चरण में संकेत की आवश्यकता नहीं')}</p>
-                </div>
-              )}
-
-              {cameraOn && gestureStage && (
+              {cameraOn && (
                 <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-2">
                   <div className="rounded-xl bg-black/70 px-3 py-2">
                     <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{t('Your hand', 'आपका हाथ')}</p>
@@ -449,7 +483,7 @@ export default function SignBridgeKiosk() {
             </div>
 
             {/* Stability meter — the patient watches this fill before it locks in */}
-            {gestureStage && (
+            {(
               <div className="px-3 py-3 bg-slate-950 border-t-2 border-slate-700">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{t('Hold steady', 'स्थिर रखें')}</span>
@@ -502,7 +536,7 @@ export default function SignBridgeKiosk() {
                   return (
                     <button
                       key={c.id}
-                      onClick={() => setComplaint(c.id)}
+                      onClick={() => answerAndAdvance(setComplaint, c.id, 'nidra', 1000)}
                       className={`relative rounded-2xl p-4 text-left border-4 transition-all ${
                         selected ? 'border-emerald-400 bg-emerald-500/20'
                           : detecting ? 'border-amber-400 bg-amber-400/15'
@@ -527,8 +561,9 @@ export default function SignBridgeKiosk() {
               {complaintObj && (
                 <SelectedBanner
                   emoji={complaintObj.emoji}
-                  text={`${complaintObj.en} / ${complaintObj.hi}`}
-                  label={t('Selected', 'चयनित')}
+                  name={`${complaintObj.en} / ${complaintObj.hi}`}
+                  advanceMs={advanceMs}
+                  lang={lang}
                 />
               )}
 
@@ -550,9 +585,9 @@ export default function SignBridgeKiosk() {
                 value={sleep}
                 liveShape={liveShape}
                 lang={lang}
-                onPick={(id) => answerAndAdvance(setSleep, id, 'agni')}
+                onPick={(id) => answerAndAdvance(setSleep, id, 'agni', 1200)}
               />
-              {sleepObj && <SelectedBanner emoji={sleepObj.emoji} text={t(sleepObj.en, sleepObj.hi)} label={t('Recorded — moving on…', 'दर्ज — आगे बढ़ रहे हैं…')} />}
+              {sleepObj && <SelectedBanner emoji={sleepObj.emoji} name={t(sleepObj.en, sleepObj.hi)} advanceMs={advanceMs} lang={lang} />}
               <NextButton disabled={!sleep} onClick={goNext} lang={lang} />
             </StagePanel>
           )}
@@ -571,9 +606,9 @@ export default function SignBridgeKiosk() {
                 value={digestion}
                 liveShape={liveShape}
                 lang={lang}
-                onPick={(id) => answerAndAdvance(setDigestion, id, 'details')}
+                onPick={(id) => answerAndAdvance(setDigestion, id, 'details', 1200)}
               />
-              {agniObj && <SelectedBanner emoji={agniObj.emoji} text={t(agniObj.en, agniObj.hi)} label={t('Recorded — moving on…', 'दर्ज — आगे बढ़ रहे हैं…')} />}
+              {agniObj && <SelectedBanner emoji={agniObj.emoji} name={t(agniObj.en, agniObj.hi)} advanceMs={advanceMs} lang={lang} />}
               <NextButton disabled={!digestion} onClick={goNext} lang={lang} />
             </StagePanel>
           )}
@@ -583,11 +618,36 @@ export default function SignBridgeKiosk() {
               icon="📝"
               en="Enter Patient Details"
               hi="अपना नाम दर्ज करें"
-              help={t('Name is required. Age, gender and mobile help the doctor.', 'नाम आवश्यक है। आयु, लिंग व मोबाइल डॉक्टर की सहायता करते हैं।')}
+              help={t('Hold 👍 for a quick guest token, or type the details below.', 'त्वरित टोकन हेतु 👍 रखें, या नीचे विवरण भरें।')}
               onBack={goBack}
               backLabel={t('Back', 'पीछे')}
             >
               <div className="flex flex-col gap-4">
+                {/* Hands-free fast path — no keyboard, no mouse */}
+                <button
+                  onClick={quickGuestToken}
+                  className="w-full px-6 py-6 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-900 text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
+                >
+                  <span>⚡ त्वरित टोकन / Quick Guest Token (Divyang Jan)</span>
+                  <span className="text-base font-bold opacity-80">
+                    👍 {t('or hold thumbs-up — name and age fill in automatically',
+                          'या अंगूठा ऊपर रखें — नाम व आयु स्वतः भर जाएँगे')}
+                  </span>
+                </button>
+
+                {advanceMs > 0 && (
+                  <SelectedBanner
+                    emoji="⚡"
+                    name={form.name || 'Divyang Patient (Divyang Jan)'}
+                    advanceMs={advanceMs}
+                    lang={lang}
+                  />
+                )}
+
+                <p className="text-center text-base font-bold text-slate-400">
+                  {t('— or enter the details below —', '— या नीचे विवरण भरें —')}
+                </p>
+
                 <label className="flex flex-col gap-2">
                   <span className="text-lg font-black">
                     {t('Patient Name', 'रोगी का नाम')} <span className="text-red-400">*</span>
@@ -691,7 +751,7 @@ export default function SignBridgeKiosk() {
               icon="🚀"
               en="Please check your answers"
               hi="कृपया अपनी जानकारी जाँचें"
-              help={t('Tap any row to change it.', 'बदलने के लिए किसी पंक्ति को दबाएँ।')}
+              help={t('Hold 👍 to send, or tap any row to change it.', 'भेजने हेतु 👍 रखें, या बदलने के लिए पंक्ति दबाएँ।')}
               onBack={goBack}
               backLabel={t('Back', 'पीछे')}
             >
@@ -725,6 +785,10 @@ export default function SignBridgeKiosk() {
                     <>🚀 {t('Submit to Doctor Queue', 'डॉक्टर कतार में भेजें')}</>
                   )}
                 </button>
+                <p className="text-center text-base font-bold text-emerald-300">
+                  👍 {t('Hold thumbs-up in front of the camera to send hands-free',
+                        'बिना छुए भेजने हेतु कैमरे के सामने अंगूठा ऊपर रखें')}
+                </p>
               </div>
             </StagePanel>
           )}
@@ -818,14 +882,13 @@ function BinaryChoice({ options, value, liveShape, lang, onPick }) {
       {options.map(o => {
         const selected = value === o.id;
         const detecting = o.shapes.includes(liveShape);
-        const good = o.tone === 'good';
         return (
           <button
             key={o.id}
             onClick={() => onPick(o.id)}
             className={`relative rounded-2xl p-6 border-4 text-left transition-all ${
               selected
-                ? good ? 'border-emerald-400 bg-emerald-500/25' : 'border-amber-400 bg-amber-400/20'
+                ? 'border-emerald-400 bg-emerald-500/25'
                 : detecting ? 'border-amber-300 bg-amber-300/10'
                 : 'border-slate-700 bg-slate-800 hover:border-slate-500'
             }`}
@@ -846,14 +909,30 @@ function BinaryChoice({ options, value, liveShape, lang, onPick }) {
   );
 }
 
-function SelectedBanner({ emoji, text, label }) {
+// Confirms the locked-in answer and visibly counts down the hands-free hop.
+function SelectedBanner({ emoji, name, advanceMs, lang }) {
+  const advancing = advanceMs > 0;
+  const seconds = (advanceMs / 1000).toFixed(1);
   return (
-    <div className="rounded-2xl bg-emerald-500/20 border-4 border-emerald-400 px-5 py-4 flex items-center gap-4">
-      <span className="text-[40px] leading-none">{emoji}</span>
-      <div>
-        <p className="text-sm font-black uppercase tracking-wider text-emerald-300">{label}</p>
-        <p className="text-2xl font-black leading-tight">{text}</p>
+    <div className={`rounded-2xl bg-emerald-500/25 border-4 border-emerald-400 px-5 py-4 flex flex-col gap-3 ${advancing ? 'animate-pulse' : ''}`}>
+      <div className="flex items-center gap-4">
+        <span className="text-[40px] leading-none shrink-0">{emoji}</span>
+        <div className="min-w-0">
+          <p className="text-2xl font-black leading-tight">
+            ✓ {name} {lang === 'hi' ? 'चयनित' : 'चयनित (Selected)'}!
+          </p>
+          <p className="text-lg font-black text-emerald-300 leading-tight">
+            {advancing
+              ? `आगे बढ़ रहे हैं (Advancing in ${seconds}s)…`
+              : (lang === 'hi' ? 'दर्ज हो गया' : 'Recorded')}
+          </p>
+        </div>
       </div>
+      {advancing && (
+        <div className="h-3 w-full rounded-full bg-emerald-900/50 overflow-hidden">
+          <div className="h-full bg-emerald-400 transition-all duration-100" style={{ width: `${Math.min(100, (advanceMs / 1500) * 100)}%` }} />
+        </div>
+      )}
     </div>
   );
 }
