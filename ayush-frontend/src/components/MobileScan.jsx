@@ -5,6 +5,8 @@ import { useSearchParams } from 'react-router-dom';
 // Opened on the patient's phone via the QR code shown on the kiosk.
 // Multiple reports can be sent one after another — the session is never reset.
 
+const FINALIZE_SECONDS = 10;
+
 const DOC_BADGE = {
   PRESCRIPTION: { text: '📄 Prescription', cls: 'bg-primary/10 text-primary' },
   LAB_REPORT: { text: '🧪 Lab Report', cls: 'bg-secondary-container/50 text-on-secondary-container' },
@@ -52,8 +54,27 @@ export default function MobileScan() {
   const [reports, setReports] = useState([]);       // every report accepted this session
   const [lastReport, setLastReport] = useState(null);
 
+  const [secondsLeft, setSecondsLeft] = useState(FINALIZE_SECONDS);
+
   const cameraRef = useRef(null);
   const fileRef = useRef(null);
+  const timerRef = useRef(0);
+
+  const stopTimer = () => { clearInterval(timerRef.current); timerRef.current = 0; };
+  useEffect(() => stopTimer, []);
+
+  // After a successful OCR the patient gets a visible 10s window to send one
+  // more document; when it runs out the session finalizes on its own.
+  useEffect(() => {
+    if (status !== 'done') return undefined;
+    const deadline = Date.now() + FINALIZE_SECONDS * 1000;
+    timerRef.current = setInterval(() => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setSecondsLeft(left);
+      if (left <= 0) { stopTimer(); setStatus('finalized'); }
+    }, 250);
+    return stopTimer;
+  }, [status]);
 
   // Restore any reports already attached to this session (e.g. after a page reload)
   useEffect(() => {
@@ -107,6 +128,7 @@ export default function MobileScan() {
       if (!res.ok || !data.success) throw new Error(data.error || `Upload failed (${res.status})`);
       if (Array.isArray(data.reports)) setReports(data.reports);
       setLastReport(data.report || null);
+      setSecondsLeft(FINALIZE_SECONDS);
       setStatus('done');
     } catch (err) {
       console.error('[MobileScan] upload:', err.message);
@@ -117,10 +139,15 @@ export default function MobileScan() {
 
   // Clears only the file picker — the session and its report list are preserved.
   const addAnother = () => {
+    stopTimer();
     setFile(null); setPreview(''); setIsPdf(false); setStatus('idle'); setErrorMsg('');
     if (cameraRef.current) cameraRef.current.value = '';
     if (fileRef.current) fileRef.current.value = '';
+    // Jump straight back into the camera — one tap, no extra screen.
+    setTimeout(() => cameraRef.current?.click(), 60);
   };
+
+  const finishNow = () => { stopTimer(); setStatus('finalized'); };
 
 
   return (
@@ -145,35 +172,90 @@ export default function MobileScan() {
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPick} />
       <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={onPick} />
 
-      {status === 'done' ? (
-        // ── Success ──
+      {status === 'finalized' ? (
+        // ── Session closed — the patient should look back at the kiosk ──
         <>
           <div className="w-full max-w-md bg-surface-container-lowest rounded-3xl shadow-md p-8 flex flex-col items-center gap-4 text-center">
+            <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary text-[54px]">task_alt</span>
+            </div>
+            <h2 className="font-headline-sm text-headline-sm text-on-surface font-semibold">
+              ✓ Upload Complete
+            </h2>
+            <p className="font-title-md text-title-md text-primary font-semibold">
+              दस्तावेज़ सफलतापूर्वक अपलोड हो गए!
+            </p>
+            <div className="w-full rounded-2xl bg-primary/10 p-4 flex flex-col gap-1.5">
+              <p className="font-body-md text-body-md text-on-surface font-semibold">
+                👀 Please look back at the kiosk screen to continue your consultation
+              </p>
+              <p className="font-body-md text-body-md text-on-surface-variant">
+                कृपया परामर्श जारी रखने के लिए कियोस्क स्क्रीन देखें।
+              </p>
+            </div>
+            <p className="font-label-sm text-label-sm text-on-surface-variant">
+              This upload session is now closed. To send more, refresh this page or scan the QR again.
+              <br />
+              यह सत्र बंद हो गया है — और भेजने के लिए QR दोबारा स्कैन करें।
+            </p>
+          </div>
+          <ReportList reports={reports} />
+        </>
+      ) : status === 'done' ? (
+        // ── Success + 10-second window to add one more document ──
+        <>
+          <div className="w-full max-w-md bg-surface-container-lowest rounded-3xl shadow-md p-6 flex flex-col items-center gap-4 text-center">
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
               <span className="material-symbols-outlined text-primary text-[44px]">check_circle</span>
             </div>
             <h2 className="font-headline-sm text-headline-sm text-on-surface font-semibold">Report {reports.length} Sent!</h2>
+
             {lastReport && (
-              <div className="flex flex-col items-center gap-1.5">
-                <span className={`px-2.5 py-0.5 rounded-full font-label-sm text-label-sm ${(DOC_BADGE[lastReport.documentType] || DOC_BADGE.MIXED).cls}`}>
+              <div className="w-full rounded-2xl bg-surface-container-low p-4 flex flex-col items-center gap-2">
+                <span className={`px-3 py-1 rounded-full font-label-md text-label-md font-semibold ${(DOC_BADGE[lastReport.documentType] || DOC_BADGE.MIXED).cls}`}>
                   {(DOC_BADGE[lastReport.documentType] || DOC_BADGE.MIXED).text}
                 </span>
-                <p className="font-body-md text-body-md text-on-surface font-medium">{lastReport.title}</p>
-                <p className="font-body-sm text-body-sm text-on-surface-variant">
-                  💊 {lastReport.medicineCount} medicine(s) · 🧪 {lastReport.labCount} lab parameter(s) extracted
+                <p className="font-title-md text-title-md text-on-surface font-semibold">{lastReport.title}</p>
+                <p className="font-body-md text-body-md text-on-surface-variant">
+                  {lastReport.medicineCount > 0 && <>💊 <strong className="text-on-surface">{lastReport.medicineCount}</strong> medicine{lastReport.medicineCount === 1 ? '' : 's'} detected</>}
+                  {lastReport.medicineCount > 0 && lastReport.labCount > 0 && ' · '}
+                  {lastReport.labCount > 0 && <>🧪 <strong className="text-on-surface">{lastReport.labCount}</strong> parameter{lastReport.labCount === 1 ? '' : 's'} detected</>}
+                  {!lastReport.medicineCount && !lastReport.labCount && 'Document stored for physician review'}
                 </p>
               </div>
             )}
-            <p className="font-body-sm text-body-sm text-on-surface-variant">
-              ✓ Check the kiosk screen to see your extracted medicines and reports.
-            </p>
-            <button
-              onClick={addAnother}
-              className="mt-2 px-5 py-3.5 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-sm hover:bg-primary-container transition-colors flex items-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-[20px]">add_a_photo</span>
-              + Add Another Report / दूसरी रिपोर्ट जोड़ें
-            </button>
+
+            {/* Auto-finalize countdown */}
+            <div className="w-full flex flex-col gap-2">
+              <div className="h-3 w-full rounded-full bg-surface-container-high overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-1000 ease-linear"
+                  style={{ width: `${(secondsLeft / FINALIZE_SECONDS) * 100}%` }}
+                />
+              </div>
+              <p className="font-body-sm text-body-sm text-on-surface-variant">
+                ⏳ You have <strong className="text-primary text-body-md">{secondsLeft}s</strong> to add another document, or this session will automatically finalize
+                <br />
+                {secondsLeft} सेकंड में दूसरी रिपोर्ट जोड़ें या सत्र समाप्त हो जाएगा
+              </p>
+            </div>
+
+            <div className="w-full flex flex-col gap-2.5">
+              <button
+                onClick={addAnother}
+                className="w-full px-5 py-3.5 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-sm hover:bg-primary-container transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[20px]">add_a_photo</span>
+                ➕ Add Another Document / दूसरी रिपोर्ट जोड़ें
+              </button>
+              <button
+                onClick={finishNow}
+                className="w-full px-5 py-3.5 rounded-xl bg-surface-container-high text-on-surface font-label-lg text-label-lg hover:bg-surface-container transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[20px]">done_all</span>
+                ✓ Finish &amp; Continue / समाप्त करें
+              </button>
+            </div>
           </div>
           <ReportList reports={reports} />
         </>

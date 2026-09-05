@@ -1,4 +1,4 @@
-import { normalizeClinicalDocs, flagStyle, docTypeLabel } from '../utils/clinicalDocs';
+import { normalizeClinicalDocs, flagStyle, docTypeLabel, docTime } from '../utils/clinicalDocs';
 
 // Printable A4 "Combined Total Case History Sheet" — Ministry of AYUSH format.
 // Rendered in an overlay; window.print() + @media print CSS isolate the sheet.
@@ -116,12 +116,26 @@ export default function CaseHistorySheet({ patient, onClose }) {
         </Section>
 
         <Section n={4} title="Active Medications (Aushadhi Sevana)">
-          <Row
-            label="Source Documents"
-            value={clinical.reports.length
-              ? clinical.reports.map(r => `${docTypeLabel(r.documentType)} — ${r.title || r.fileName}`).join(' | ')
-              : (p.documents?.ocrData?.documentType || 'No document uploaded')}
-          />
+          {clinical.reports.length ? (
+            <div style={{ padding: '2px 0 6px' }}>
+              <div style={{ color: '#555', fontWeight: 600, marginBottom: 4 }}>
+                Uploaded Documents ({clinical.reports.length})
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {clinical.reports.map((r, i) => (
+                  <span key={r.id || i} style={{ border: '1px solid #bbb', borderRadius: 6, padding: '4px 9px', fontSize: 11, background: '#fafafa' }}>
+                    <strong>{docTypeLabel(r.documentType)}</strong> — {r.title || r.fileName}
+                    <span style={{ color: '#666' }}>
+                      {r.uploadedAt ? ` · ${docTime(r.uploadedAt)}` : ''}
+                      {` · ${r.medicines?.length || 0} med · ${r.labTests?.length || 0} lab`}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <Row label="Source Documents" value={p.documents?.ocrData?.documentType || 'No document uploaded'} />
+          )}
           {clinical.medicines.length ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
               {clinical.medicines.map((m, i) => (
@@ -138,7 +152,7 @@ export default function CaseHistorySheet({ patient, onClose }) {
           )}
         </Section>
 
-        <Section n={5} title="Diagnostic Lab Matrix">
+        <Section n={5} title="Scanned Lab Matrix">
           {clinical.labTests.length ? (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, marginTop: 4 }}>
               <thead>
@@ -152,13 +166,16 @@ export default function CaseHistorySheet({ patient, onClose }) {
               <tbody>
                 {clinical.labTests.map((l, i) => {
                   const st = flagStyle(l.flag);
+                  const critical = l.flag === 'CRITICAL';
                   return (
-                    <tr key={i}>
+                    <tr key={i} style={critical ? { background: '#fdecea' } : undefined}>
                       <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>{l.testName}</td>
                       <td style={{ padding: '5px 8px', border: '1px solid #ddd', fontWeight: 700 }}>{l.observedValue || '—'}</td>
                       <td style={{ padding: '5px 8px', border: '1px solid #ddd', color: '#555' }}>{l.referenceRange || '—'}</td>
                       <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>
-                        <span style={{ background: st.print, color: '#fff', borderRadius: 12, padding: '2px 9px', fontSize: 10.5, fontWeight: 700 }}>{st.label}</span>
+                        <span style={{ background: st.print, color: '#fff', borderRadius: 12, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, letterSpacing: critical ? 0.5 : 0 }}>
+                          {critical ? '⚠ ' : ''}{st.label}
+                        </span>
                       </td>
                     </tr>
                   );
@@ -171,7 +188,7 @@ export default function CaseHistorySheet({ patient, onClose }) {
           {clinical.observations && <div style={{ marginTop: 6 }}><Row label="Clinical Observations" value={clinical.observations} /></div>}
         </Section>
 
-        <Section n={6} title="AI Diagnostic Correlation">
+        <Section n={6} title="AI Vaidya — Clinical / AYUSH Correlation">
           <div style={{ background: '#f7f5ff', borderLeft: '3px solid #6750a4', padding: '8px 10px', fontSize: 12, lineHeight: 1.55 }}>
             {p.diagnosticCorrelation || clinical.correlation ||
               `Reported markers — Dosha ${p.dosha || '—'}, Agni ${agni}, Koshtha ${koshtha}. ${clinical.labTests.length ? 'Correlate the lab matrix above with these Ayurvedic markers during examination.' : 'No prior records available for correlation.'}`}

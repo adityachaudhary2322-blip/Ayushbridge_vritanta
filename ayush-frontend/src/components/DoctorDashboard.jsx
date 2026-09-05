@@ -4,7 +4,7 @@ import ClinicalBriefingModal from './ClinicalBriefingModal';
 import PatientAdviceDrawer from './PatientAdviceDrawer';
 import CaseReportModal from './CaseReportModal';
 import CaseHistorySheet from './CaseHistorySheet';
-import { normalizeClinicalDocs, flagStyle, docTypeLabel } from '../utils/clinicalDocs';
+import { normalizeClinicalDocs, flagStyle, docTypeLabel, docTime } from '../utils/clinicalDocs';
 
 const API = '/api';
 
@@ -332,14 +332,24 @@ export default function DoctorDashboard() {
                             </button>
                             {isOpen && (
                               <div className="px-3.5 pb-3.5 flex flex-col gap-3">
-                                {/* Uploaded reports */}
+                                {/* Uploaded document summary */}
                                 {clinical.reports.length > 0 && (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {clinical.reports.map((r, i) => (
-                                      <span key={r.id || i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container-high text-on-surface font-label-sm text-label-sm">
-                                        {docTypeLabel(r.documentType)} · {r.title || r.fileName}
-                                      </span>
-                                    ))}
+                                  <div className="flex flex-col gap-1.5">
+                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                                      Uploaded Documents ({clinical.reports.length})
+                                    </span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {clinical.reports.map((r, i) => (
+                                        <span key={r.id || i} className="inline-flex flex-col px-2.5 py-1.5 rounded-lg bg-surface-container-high text-on-surface">
+                                          <span className="font-label-sm text-label-sm font-semibold">
+                                            {docTypeLabel(r.documentType)} — {r.title || r.fileName}
+                                          </span>
+                                          <span className="font-label-sm text-label-sm text-on-surface-variant">
+                                            🕑 {docTime(r.uploadedAt)} · 💊 {r.medicines?.length || 0} · 🧪 {r.labTests?.length || 0}
+                                          </span>
+                                        </span>
+                                      ))}
+                                    </div>
                                   </div>
                                 )}
 
@@ -366,7 +376,7 @@ export default function DoctorDashboard() {
                                 {/* Diagnostic lab matrix */}
                                 {clinical.labTests.length > 0 && (
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Diagnostic Lab Matrix</span>
+                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Scanned Lab Matrix</span>
                                     <div className="overflow-x-auto rounded-xl ring-1 ring-surface-container-high">
                                       <table className="w-full text-left font-body-sm text-body-sm">
                                         <thead className="bg-surface-container-high text-on-surface-variant">
@@ -409,7 +419,7 @@ export default function DoctorDashboard() {
                                   <div className="flex flex-col gap-1 rounded-xl bg-tertiary-container/25 p-3">
                                     <span className="font-label-sm text-label-sm text-on-tertiary-container uppercase tracking-wide flex items-center gap-1.5">
                                       <span className="material-symbols-outlined text-[15px]">neurology</span>
-                                      AI Diagnostic Correlation
+                                      AI Vaidya — Clinical / AYUSH Correlation
                                     </span>
                                     <p className="font-body-sm text-body-sm text-on-surface">{p.diagnosticCorrelation || clinical.correlation}</p>
                                   </div>

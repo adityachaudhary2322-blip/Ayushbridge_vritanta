@@ -347,6 +347,11 @@ export default function SignBridgeKiosk() {
 
   // ── Gesture → action, resolved against whatever stage is on screen ────────
   const onShape = useCallback((shape) => {
+    // The upload drawer takes priority — 👍 closes it and resumes the wizard.
+    if (drawerOpen) {
+      if (shape === 'THUMBS_UP') { setDrawerOpen(false); goNext(); }
+      return;
+    }
     if (stage === 'complaint') {
       const hit = COMPLAINTS.find(c => c.shape === shape);
       if (hit) answerAndAdvance(setComplaint, hit.id, 'nidra', 1500);
@@ -362,7 +367,7 @@ export default function SignBridgeKiosk() {
       if (shape === 'THUMBS_UP' && !submitting) submit();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, answerAndAdvance, quickGuestToken, submitting]);
+  }, [stage, drawerOpen, goNext, answerAndAdvance, quickGuestToken, submitting]);
 
   useEffect(() => { shapeRef.current = onShape; }, [onShape]);
 
@@ -443,6 +448,22 @@ export default function SignBridgeKiosk() {
           })}
         </ol>
       </nav>
+
+      {/* Live attached-document pills — visible on every stage */}
+      {reports.length > 0 && (
+        <div className="w-full px-4 sm:px-6 py-2 bg-emerald-500/15 border-b-2 border-emerald-500/40">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2">
+            <span className="text-base font-black text-emerald-300">
+              ✓ {reports.length} {t(`Document${reports.length === 1 ? '' : 's'} Attached`, 'दस्तावेज़ जुड़े')}:
+            </span>
+            {reports.map((r, i) => (
+              <span key={r.id || i} className="px-2.5 py-0.5 rounded-lg bg-slate-800 text-sm font-black">
+                {DOC_BADGE[r.documentType] || DOC_BADGE.MIXED}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5">
 
@@ -729,8 +750,13 @@ export default function SignBridgeKiosk() {
                           : t('Optional — you can skip this.', 'वैकल्पिक — आप छोड़ सकते हैं।')}
                     </p>
                   </div>
-                  <button onClick={goNext} className="px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-base font-black shrink-0">
-                    {t('Skip', 'आगे बढ़ें')} ➔
+                  <button
+                    onClick={goNext}
+                    className={`px-5 py-3 rounded-xl text-base font-black shrink-0 ${
+                      reports.length ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-900' : 'bg-slate-800 hover:bg-slate-700'
+                    }`}
+                  >
+                    {reports.length ? t('Continue Consultation', 'परामर्श जारी रखें') : t('Skip', 'आगे बढ़ें')} ➔
                   </button>
                 </div>
 
@@ -822,6 +848,32 @@ export default function SignBridgeKiosk() {
                 {docs?.status === 'processing' ? t('Reading document…', 'दस्तावेज़ पढ़ा जा रहा है…') : `${t('Waiting', 'प्रतीक्षा')} · ${sessionId}`}
               </span>
             </div>
+
+            {reports.length > 0 && (
+              <>
+                {/* Live preview pill — what the kiosk has received so far */}
+                <div className="rounded-2xl bg-emerald-500/20 border-4 border-emerald-400 px-4 py-3 flex flex-wrap items-center gap-2">
+                  <span className="text-lg font-black">
+                    ✓ {reports.length} {t(`Document${reports.length === 1 ? '' : 's'} Attached`, 'दस्तावेज़ जुड़े')}:
+                  </span>
+                  {reports.map((r, i) => (
+                    <span key={r.id || i} className="px-2.5 py-1 rounded-lg bg-slate-900 text-emerald-300 text-sm font-black">
+                      {DOC_BADGE[r.documentType] || DOC_BADGE.MIXED}
+                    </span>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => { setDrawerOpen(false); goNext(); }}
+                  className="w-full px-6 py-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
+                >
+                  <span>➔ {t('Next: Continue Consultation', 'परामर्श जारी रखें')}</span>
+                  <span className="text-base font-bold opacity-80">
+                    👍 {t('or hold thumbs-up', 'या अंगूठा ऊपर रखें')}
+                  </span>
+                </button>
+              </>
+            )}
 
             {reports.length > 0 && (
               <div className="flex flex-col gap-2">

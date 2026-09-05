@@ -8,13 +8,32 @@
  */
 
 export const LAB_FLAG_STYLE = {
-  CRITICAL: { chip: 'bg-error-container text-on-error-container', print: '#b3261e', label: 'CRITICAL' },
+  // CRITICAL pulses on screen so it cannot be missed in a busy queue.
+  CRITICAL: { chip: 'bg-red-600 text-white animate-pulse ring-2 ring-red-400', print: '#8c0e0e', label: 'CRITICAL' },
   HIGH: { chip: 'bg-error-container text-on-error-container', print: '#b3261e', label: 'HIGH' },
-  LOW: { chip: 'bg-secondary-fixed text-on-secondary-fixed-variant', print: '#e8710a', label: 'LOW' },
-  NORMAL: { chip: 'bg-primary/10 text-primary', print: '#188038', label: 'NORMAL' },
+  LOW: { chip: 'bg-amber-200 text-amber-900', print: '#e8710a', label: 'LOW' },
+  NORMAL: { chip: 'bg-green-100 text-green-800', print: '#188038', label: 'NORMAL' },
 };
 
-export const flagStyle = (flag) => LAB_FLAG_STYLE[String(flag || '').toUpperCase()] || LAB_FLAG_STYLE.NORMAL;
+/** Short, India-formatted timestamp for a document badge. */
+export function docTime(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  } catch { return String(ts); }
+}
+
+const UNVERIFIED = { chip: 'bg-surface-container-high text-on-surface-variant', print: '#5f6368', label: 'UNVERIFIED' };
+
+/**
+ * Style for a lab flag. An unrecognised flag falls back to a neutral badge —
+ * never to NORMAL, so a value we could not classify is never shown as healthy.
+ */
+export const flagStyle = (flag) => {
+  const f = String(flag || '').toUpperCase();
+  if (f === 'ABNORMAL') return LAB_FLAG_STYLE.HIGH;
+  return LAB_FLAG_STYLE[f] || UNVERIFIED;
+};
 
 const LEGACY_FLAG = { High: 'HIGH', Low: 'LOW', Critical: 'CRITICAL', Abnormal: 'HIGH' };
 
@@ -27,6 +46,9 @@ export function normalizeClinicalDocs(documents) {
 
   // ── Medications ──
   let medicines = Array.isArray(documents.aggregatedMedicines) ? documents.aggregatedMedicines : [];
+  if (!medicines.length && reports.length) {
+    medicines = reports.flatMap(r => (r.medicines || []).map(m => ({ ...m, source: r.title || r.fileName })));
+  }
   if (!medicines.length && Array.isArray(ocr.medicines)) {
     medicines = ocr.medicines.map(m => ({
       name: m.name,
@@ -39,6 +61,9 @@ export function normalizeClinicalDocs(documents) {
 
   // ── Lab parameters (prefer the full matrix, fall back to abnormal-only) ──
   let labTests = Array.isArray(documents.aggregatedLabFlags) ? documents.aggregatedLabFlags : [];
+  if (!labTests.length && reports.length) {
+    labTests = reports.flatMap(r => (r.labTests || []).map(l => ({ ...l, source: r.title || r.fileName })));
+  }
   if (!labTests.length && Array.isArray(ocr.labTests)) labTests = ocr.labTests;
   if (!labTests.length && Array.isArray(ocr.abnormalLabValues)) {
     labTests = ocr.abnormalLabValues.map(l => ({

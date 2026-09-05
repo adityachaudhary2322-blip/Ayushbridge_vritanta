@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam';
 
+const DOC_TYPE_PILL = {
+  PRESCRIPTION: '📄 Prescription',
+  LAB_REPORT: '🧪 Lab Report',
+  MIXED: '📄🧪 Prescription + Lab',
+};
+
 const STAGES = ['name', 'ageGender', 'mobile', 'complaint', 'has_documents', 'agni', 'sleep', 'energy', 'history'];
 
 const DOC_Q = {
@@ -523,6 +529,18 @@ export default function TouchlessKiosk() {
                             <span className="material-symbols-outlined text-[24px]">check_circle</span>
                             <span className="font-title-md text-title-md font-semibold">{lang === 'hi' ? 'दस्तावेज़ मिला!' : 'Document Received!'}</span>
                           </div>
+                          {docResult.reports?.length > 0 && (
+                            <div className="flex flex-wrap items-center justify-center gap-1.5">
+                              <span className="font-label-md text-label-md text-on-surface font-semibold">
+                                ✓ {docResult.reports.length} {lang === 'hi' ? 'दस्तावेज़ जुड़े' : `Document${docResult.reports.length === 1 ? '' : 's'} Attached`}:
+                              </span>
+                              {docResult.reports.map((r, i) => (
+                                <span key={r.id || i} className="px-2 py-0.5 rounded-lg bg-surface-container-high text-primary font-label-sm text-label-sm">
+                                  {DOC_TYPE_PILL[r.documentType] || DOC_TYPE_PILL.MIXED}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           {docResult.ocrData?.medicines?.length > 0 && (
                             <div className="flex flex-wrap justify-center gap-1.5">
                               {docResult.ocrData.medicines.map((m, i) => (
@@ -533,9 +551,9 @@ export default function TouchlessKiosk() {
                             </div>
                           )}
                           {/* Guaranteed manual advance — user is never trapped */}
-                          <button onClick={advanceFromDocs} className="px-5 py-3.5 rounded-xl bg-green-600 text-white font-label-lg text-label-lg shadow-md hover:bg-green-700 transition-colors flex items-center gap-2">
-                            {lang === 'hi' ? 'आगे बढ़ें: अग्नि एवं कोष्ठ' : 'Continue to Agni & Koshtha'}
-                            <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+                          <button onClick={advanceFromDocs} className="px-6 py-4 rounded-xl bg-green-600 text-white font-title-md text-title-md font-semibold shadow-md hover:bg-green-700 transition-colors flex items-center gap-2">
+                            ➔ {lang === 'hi' ? 'परामर्श जारी रखें' : 'Next: Continue Consultation'}
+                            <span className="material-symbols-outlined text-[22px]">arrow_forward</span>
                           </button>
                         </div>
                       ) : (
@@ -612,6 +630,20 @@ export default function TouchlessKiosk() {
                   <p className="font-body-sm text-body-sm text-on-surface-variant text-center">
                     {docResult.ocrData.medicines.length} medicine(s) · {docResult.ocrData.abnormalLabValues?.length || 0} lab flag(s)
                   </p>
+                )}
+                {docResult.reports?.length > 0 && (
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {docResult.reports.map((r, i) => (
+                      <span key={r.id || i} className="px-2 py-0.5 rounded-lg bg-surface-container-high text-primary font-label-sm text-label-sm">
+                        {DOC_TYPE_PILL[r.documentType] || DOC_TYPE_PILL.MIXED}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {stage === 'has_documents' && (
+                  <button onClick={advanceFromDocs} className="w-full px-4 py-3 rounded-xl bg-green-600 text-white font-label-lg text-label-lg shadow-md hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5">
+                    ➔ {lang === 'hi' ? 'परामर्श जारी रखें' : 'Continue Consultation'}
+                  </button>
                 )}
               </div>
             ) : docResult && docResult.status === 'processing' ? (
