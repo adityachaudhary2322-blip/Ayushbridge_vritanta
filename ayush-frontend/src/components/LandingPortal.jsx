@@ -44,15 +44,90 @@ export default function LandingPortal() {
             A multilingual, voice-first triage assistant that registers patients hands-free, reads
             their prescriptions, and routes them to an AYUSH physician by clinical priority.
           </p>
-          <div className="flex flex-col sm:flex-row items-center gap-3 mt-2">
-            <button onClick={() => navigate('/kiosk')} className="px-7 py-4 rounded-2xl bg-primary text-on-primary font-title-md text-title-md shadow-lg hover:bg-primary-container transition-all flex items-center gap-2.5">
-              <span className="material-symbols-outlined text-[24px]">local_hospital</span>
-              🏥 Launch Hospital Kiosk Mode
-            </button>
-            <button onClick={() => navigate('/text-intake')} className="px-6 py-4 rounded-2xl bg-surface-container-high text-on-surface font-title-md text-title-md hover:bg-surface-container transition-colors flex items-center gap-2 shadow-sm">
-              <span className="material-symbols-outlined text-[22px]">edit_note</span>
-              Text Intake
-            </button>
+        </section>
+
+        {/* ── Mode selection — three distinct pathways ── */}
+        <section className="flex flex-col gap-5">
+          <div className="text-center">
+            <h2 className="font-headline-sm text-headline-sm text-on-surface font-bold">Choose your pathway</h2>
+            <p className="font-body-md text-body-md text-on-surface-variant mt-1">अपना माध्यम चुनें — तीनों में से कोई एक</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
+
+            {/* 1 · Voice kiosk */}
+            <article className="group bg-surface-container-lowest rounded-3xl shadow-sm hover:shadow-lg ring-1 ring-surface-container-high hover:ring-primary/40 transition-all p-6 flex flex-col gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-[30px]">🗣️</div>
+              <div className="flex-1 flex flex-col gap-1.5">
+                <h3 className="font-title-lg text-title-lg text-on-surface font-bold leading-tight">
+                  Touchless Voice AI Kiosk
+                </h3>
+                <p className="font-title-md text-title-md text-primary font-semibold leading-tight">आवाज आधारित कियोस्क</p>
+                <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed mt-1">
+                  Walk-in OPD patients · Autonomous Hindi/English voice intake &amp; Rogi Pariksha
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/kiosk')}
+                className="w-full px-5 py-3.5 rounded-2xl bg-primary text-on-primary font-label-lg text-label-lg shadow-sm hover:bg-primary-container transition-all flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[20px]">local_hospital</span>
+                Launch Kiosk
+              </button>
+            </article>
+
+            {/* 2 · Teleconsultation */}
+            <article className="group bg-surface-container-lowest rounded-3xl shadow-sm hover:shadow-lg ring-1 ring-surface-container-high hover:ring-primary/40 transition-all p-6 flex flex-col gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-secondary-container/40 text-on-secondary-container flex items-center justify-center text-[30px]">📱</div>
+              <div className="flex-1 flex flex-col gap-1.5">
+                <h3 className="font-title-lg text-title-lg text-on-surface font-bold leading-tight">
+                  Remote Teleconsultation
+                </h3>
+                <p className="font-title-md text-title-md text-primary font-semibold leading-tight">दूरस्थ टेली-परामर्श</p>
+                <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed mt-1">
+                  Mobile video call · Zero app install · Doctor remote triage
+                </p>
+                <div className="mt-2 flex items-center gap-3">
+                  <div className="p-2 bg-white rounded-xl shadow-sm ring-1 ring-surface-container-high shrink-0">
+                    <QRCodeSVG value={teleconsultUrl} size={92} level="M" />
+                  </div>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    Scan with your phone camera — the call opens in the mobile browser.
+                    <br />
+                    <span className="text-primary font-semibold">Room {roomId}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate(`/teleconsult?room=${roomId}`)}
+                className="w-full px-5 py-3.5 rounded-2xl bg-surface-container-high text-on-surface font-label-lg text-label-lg hover:bg-surface-container transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[20px]">videocam</span>
+                Open Call on this Screen
+              </button>
+            </article>
+
+            {/* 3 · Sign language */}
+            <article className="group bg-surface-container-lowest rounded-3xl shadow-sm hover:shadow-lg ring-1 ring-tertiary-container hover:ring-tertiary transition-all p-6 flex flex-col gap-4 relative overflow-hidden">
+              <span className="absolute top-4 right-4 px-2.5 py-0.5 rounded-full bg-tertiary text-on-tertiary font-label-sm text-label-sm font-semibold">Beta</span>
+              <div className="w-14 h-14 rounded-2xl bg-tertiary-container/40 text-on-tertiary-container flex items-center justify-center text-[30px]">🤟</div>
+              <div className="flex-1 flex flex-col gap-1.5">
+                <h3 className="font-title-lg text-title-lg text-on-surface font-bold leading-tight">
+                  Divyang Jan — Sign Language Mode
+                </h3>
+                <p className="font-title-md text-title-md text-primary font-semibold leading-tight">सांकेतिक भाषा मोड</p>
+                <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed mt-1">
+                  Speech &amp; hearing impaired · Touchless gesture &amp; visual triage · Multi-report upload
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/sign-bridge')}
+                className="w-full px-5 py-3.5 rounded-2xl bg-tertiary text-on-tertiary font-label-lg text-label-lg shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[20px]">sign_language</span>
+                Open SignBridge
+              </button>
+            </article>
           </div>
         </section>
 
@@ -71,40 +146,6 @@ export default function LandingPortal() {
               <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">{c.body}</p>
             </div>
           ))}
-        </section>
-
-        {/* Teleconsult demo */}
-        <section className="bg-surface-container-lowest rounded-3xl shadow-md ring-1 ring-surface-container-high overflow-hidden">
-          <div className="grid grid-cols-1 lg:grid-cols-2">
-            <div className="p-8 flex flex-col justify-center gap-4">
-              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-tertiary-container/40 text-on-tertiary-container font-label-md text-label-md w-fit">
-                <span className="material-symbols-outlined text-[16px]">videocam</span>
-                Live Demo
-              </span>
-              <h2 className="font-headline-sm text-headline-sm text-on-surface font-bold">
-                📱 Try Remote Teleconsultation on Your Smartphone
-              </h2>
-              <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                Scan this QR code with your phone camera to experience an AI Vaidya teleconsultation
-                call — with a 5-second admission countdown and press-or-say IVR language selection.
-              </p>
-              <div className="flex flex-col sm:flex-row items-start gap-3 mt-1">
-                <button onClick={() => navigate(`/teleconsult?room=${roomId}`)} className="px-6 py-3.5 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-md hover:bg-primary-container transition-all flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[20px]">desktop_windows</span>
-                  💻 Open Call on this Screen for Demo
-                </button>
-              </div>
-              <p className="font-label-sm text-label-sm text-on-surface-variant">Room ID: <strong className="text-primary">{roomId}</strong></p>
-            </div>
-            <div className="bg-primary/[0.05] p-8 flex flex-col items-center justify-center gap-4 border-t lg:border-t-0 lg:border-l border-surface-container-high">
-              <div className="p-4 bg-white rounded-2xl shadow-sm">
-                <QRCodeSVG value={teleconsultUrl} size={196} level="M" />
-              </div>
-              <p className="font-body-sm text-body-sm text-on-surface-variant text-center max-w-xs">
-                Point your phone camera here — the call opens directly in your mobile browser.
-              </p>
-            </div>
-          </div>
         </section>
 
         <footer className="text-center font-label-sm text-label-sm text-on-surface-variant pb-4">

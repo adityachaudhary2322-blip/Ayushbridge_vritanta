@@ -4,6 +4,7 @@ import ClinicalBriefingModal from './ClinicalBriefingModal';
 import PatientAdviceDrawer from './PatientAdviceDrawer';
 import CaseReportModal from './CaseReportModal';
 import CaseHistorySheet from './CaseHistorySheet';
+import { normalizeClinicalDocs, flagStyle, docTypeLabel } from '../utils/clinicalDocs';
 
 const API = '/api';
 
@@ -234,8 +235,8 @@ export default function DoctorDashboard() {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {patients.map((p) => {
                   const docs = p.documents;
-                  const ocr = docs?.ocrData;
-                  const hasDocs = !!ocr;
+                  const clinical = normalizeClinicalDocs(docs);
+                  const hasDocs = clinical.hasData;
                   const isOpen = openDocsId === p.id;
                   return (
                     <div key={p.id} className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden ring-1 ring-surface-container-high">
@@ -323,52 +324,98 @@ export default function DoctorDashboard() {
                               <span className="inline-flex items-center gap-2 font-label-md text-label-md text-on-surface">
                                 <span className="material-symbols-outlined text-primary text-[18px]">folder_open</span>
                                 Prescriptions &amp; Lab Reports
-                                <span className="px-1.5 py-0.5 rounded-full bg-surface-container-high text-primary font-label-sm text-label-sm">{ocr.documentType || 'Document'}</span>
+                                <span className="px-1.5 py-0.5 rounded-full bg-surface-container-high text-primary font-label-sm text-label-sm">
+                                  {clinical.reports.length > 1 ? `${clinical.reports.length} reports` : docTypeLabel(clinical.reports[0]?.documentType || docs?.ocrData?.documentType)}
+                                </span>
                               </span>
                               <span className="material-symbols-outlined text-on-surface-variant text-[20px]">{isOpen ? 'expand_less' : 'expand_more'}</span>
                             </button>
                             {isOpen && (
                               <div className="px-3.5 pb-3.5 flex flex-col gap-3">
-                                {ocr.medicines?.length > 0 && (
+                                {/* Uploaded reports */}
+                                {clinical.reports.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {clinical.reports.map((r, i) => (
+                                      <span key={r.id || i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container-high text-on-surface font-label-sm text-label-sm">
+                                        {docTypeLabel(r.documentType)} · {r.title || r.fileName}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Active medications */}
+                                {clinical.medicines.length > 0 && (
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Extracted Medicines</span>
+                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Active Medications</span>
                                     <div className="flex flex-wrap gap-1.5">
-                                      {ocr.medicines.map((m, i) => (
+                                      {clinical.medicines.map((m, i) => (
                                         <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-label-sm text-label-sm">
                                           <span className="material-symbols-outlined text-[13px]">medication</span>
-                                          {m.name}{m.dosage ? ` — ${m.dosage}` : ''}
-                                          {m.ayushCategory && m.ayushCategory !== 'Unknown' && (
-                                            <span className="px-1 py-0.5 rounded bg-surface-container-high text-on-surface-variant text-[10px] ml-0.5">{m.ayushCategory}</span>
+                                          <strong>{m.name}</strong>
+                                          {m.dosage ? ` · ${m.dosage}` : ''}
+                                          {m.frequency ? ` · ${m.frequency}` : ''}
+                                          {m.instructions && (
+                                            <span className="px-1 py-0.5 rounded bg-surface-container-high text-on-surface-variant text-[10px] ml-0.5">{m.instructions}</span>
                                           )}
                                         </span>
                                       ))}
                                     </div>
                                   </div>
                                 )}
-                                {ocr.abnormalLabValues?.length > 0 && (
+
+                                {/* Diagnostic lab matrix */}
+                                {clinical.labTests.length > 0 && (
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Abnormal Lab Values</span>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {ocr.abnormalLabValues.map((l, i) => (
-                                        <span key={i} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-label-sm text-label-sm ${
-                                          l.flag === 'High' ? 'bg-error-container text-on-error-container' :
-                                          l.flag === 'Low' ? 'bg-secondary-fixed text-on-secondary-fixed-variant' :
-                                          'bg-secondary-container/40 text-on-secondary-container'
-                                        }`}>
-                                          <span className="material-symbols-outlined text-[13px]">science</span>
-                                          {l.test}: {l.value} {l.flag && `(${l.flag})`}
-                                        </span>
-                                      ))}
+                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Diagnostic Lab Matrix</span>
+                                    <div className="overflow-x-auto rounded-xl ring-1 ring-surface-container-high">
+                                      <table className="w-full text-left font-body-sm text-body-sm">
+                                        <thead className="bg-surface-container-high text-on-surface-variant">
+                                          <tr>
+                                            <th className="px-2.5 py-1.5 font-semibold">Test Parameter</th>
+                                            <th className="px-2.5 py-1.5 font-semibold">Observed</th>
+                                            <th className="px-2.5 py-1.5 font-semibold">Normal Range</th>
+                                            <th className="px-2.5 py-1.5 font-semibold">Status</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {clinical.labTests.map((l, i) => {
+                                            const st = flagStyle(l.flag);
+                                            return (
+                                              <tr key={i} className="border-t border-surface-container-high">
+                                                <td className="px-2.5 py-1.5 text-on-surface">{l.testName}</td>
+                                                <td className="px-2.5 py-1.5 text-on-surface font-medium">{l.observedValue || '—'}</td>
+                                                <td className="px-2.5 py-1.5 text-on-surface-variant">{l.referenceRange || '—'}</td>
+                                                <td className="px-2.5 py-1.5">
+                                                  <span className={`inline-block px-2 py-0.5 rounded-full font-label-sm text-label-sm font-semibold ${st.chip}`}>{st.label}</span>
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
                                     </div>
                                   </div>
                                 )}
-                                {ocr.clinicalImpressions && (
+
+                                {clinical.observations && (
                                   <div className="flex flex-col gap-1">
-                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Doctor Impression</span>
-                                    <p className="font-body-sm text-body-sm text-on-surface">{ocr.clinicalImpressions}</p>
+                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Clinical Observations</span>
+                                    <p className="font-body-sm text-body-sm text-on-surface">{clinical.observations}</p>
                                   </div>
                                 )}
-                                {docs.fileBase64 && (
+
+                                {/* AI diagnostic correlation */}
+                                {(p.diagnosticCorrelation || clinical.correlation) && (
+                                  <div className="flex flex-col gap-1 rounded-xl bg-tertiary-container/25 p-3">
+                                    <span className="font-label-sm text-label-sm text-on-tertiary-container uppercase tracking-wide flex items-center gap-1.5">
+                                      <span className="material-symbols-outlined text-[15px]">neurology</span>
+                                      AI Diagnostic Correlation
+                                    </span>
+                                    <p className="font-body-sm text-body-sm text-on-surface">{p.diagnosticCorrelation || clinical.correlation}</p>
+                                  </div>
+                                )}
+
+                                {docs?.fileBase64 && (
                                   <button
                                     onClick={() => setDocModal(docs)}
                                     className="mt-1 self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm"

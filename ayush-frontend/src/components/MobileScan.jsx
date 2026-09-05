@@ -1,8 +1,45 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 // Mobile-optimized touchless document upload page.
 // Opened on the patient's phone via the QR code shown on the kiosk.
+// Multiple reports can be sent one after another — the session is never reset.
+
+const DOC_BADGE = {
+  PRESCRIPTION: { text: '📄 Prescription', cls: 'bg-primary/10 text-primary' },
+  LAB_REPORT: { text: '🧪 Lab Report', cls: 'bg-secondary-container/50 text-on-secondary-container' },
+  MIXED: { text: '📄🧪 Prescription + Lab', cls: 'bg-tertiary-container/50 text-on-tertiary-container' },
+};
+
+function ReportList({ reports }) {
+  if (!reports.length) return null;
+  return (
+    <div className="w-full max-w-md bg-surface-container-lowest rounded-3xl shadow-sm ring-1 ring-surface-container-high p-4 flex flex-col gap-2.5">
+      <div className="flex items-center justify-between">
+        <span className="font-label-md text-label-md text-on-surface font-semibold flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-primary text-[18px]">folder_open</span>
+          Reports in this session
+        </span>
+        <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-primary font-label-sm text-label-sm">{reports.length}</span>
+      </div>
+      {reports.map((r, i) => {
+        const badge = DOC_BADGE[r.documentType] || DOC_BADGE.MIXED;
+        return (
+          <div key={r.id || i} className="rounded-2xl bg-surface-container-low p-3 flex flex-col gap-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`px-2 py-0.5 rounded-full font-label-sm text-label-sm ${badge.cls}`}>{badge.text}</span>
+              <span className="font-label-md text-label-md text-on-surface font-semibold truncate">{r.title || r.fileName}</span>
+            </div>
+            <p className="font-body-sm text-body-sm text-on-surface-variant">
+              💊 {r.medicineCount || 0} medicine(s) · 🧪 {r.labCount || 0} lab parameter(s)
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MobileScan() {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sid') || '';
@@ -12,9 +49,32 @@ export default function MobileScan() {
   const [isPdf, setIsPdf] = useState(false);
   const [status, setStatus] = useState('idle');     // idle | uploading | done | error
   const [errorMsg, setErrorMsg] = useState('');
+  const [reports, setReports] = useState([]);       // every report accepted this session
+  const [lastReport, setLastReport] = useState(null);
 
   const cameraRef = useRef(null);
   const fileRef = useRef(null);
+
+  // Restore any reports already attached to this session (e.g. after a page reload)
+  useEffect(() => {
+    if (!sessionId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/session-docs/${sessionId}`);
+        const data = await res.json();
+        if (Array.isArray(data?.reports) && data.reports.length) {
+          setReports(data.reports.map(r => ({
+            id: r.id,
+            title: r.title,
+            fileName: r.fileName,
+            documentType: r.documentType,
+            medicineCount: r.medicines?.length || 0,
+            labCount: r.labTests?.length || 0,
+          })));
+        }
+      } catch { /* first visit — nothing to restore */ }
+    })();
+  }, [sessionId]);
 
   const onPick = (e) => {
     const f = e.target.files?.[0];
@@ -45,6 +105,8 @@ export default function MobileScan() {
       const res = await fetch('/api/upload-mobile', { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) throw new Error(data.error || `Upload failed (${res.status})`);
+      if (Array.isArray(data.reports)) setReports(data.reports);
+      setLastReport(data.report || null);
       setStatus('done');
     } catch (err) {
       console.error('[MobileScan] upload:', err.message);
@@ -53,11 +115,13 @@ export default function MobileScan() {
     }
   };
 
-  const reset = () => {
+  // Clears only the file picker — the session and its report list are preserved.
+  const addAnother = () => {
     setFile(null); setPreview(''); setIsPdf(false); setStatus('idle'); setErrorMsg('');
     if (cameraRef.current) cameraRef.current.value = '';
     if (fileRef.current) fileRef.current.value = '';
   };
+
 
   return (
     <div className="min-h-screen bg-surface flex flex-col items-center px-4 py-8 gap-6">
@@ -68,7 +132,7 @@ export default function MobileScan() {
         </div>
         <h1 className="font-headline-sm text-headline-sm text-on-surface font-semibold">AYUSH Document Scan</h1>
         <p className="font-body-sm text-body-sm text-on-surface-variant">
-          Upload your prescription or lab report. It will appear instantly on the clinic kiosk screen.
+          Upload your prescriptions and lab reports — send as many as you like. They appear instantly on the clinic kiosk screen.
         </p>
         {sessionId && (
           <span className="px-2.5 py-0.5 rounded-full bg-surface-container-high text-primary font-label-sm text-label-sm">
@@ -83,19 +147,36 @@ export default function MobileScan() {
 
       {status === 'done' ? (
         // ── Success ──
-        <div className="w-full max-w-md bg-surface-container-lowest rounded-3xl shadow-md p-8 flex flex-col items-center gap-4 text-center">
-          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-            <span className="material-symbols-outlined text-primary text-[44px]">check_circle</span>
+        <>
+          <div className="w-full max-w-md bg-surface-container-lowest rounded-3xl shadow-md p-8 flex flex-col items-center gap-4 text-center">
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary text-[44px]">check_circle</span>
+            </div>
+            <h2 className="font-headline-sm text-headline-sm text-on-surface font-semibold">Report {reports.length} Sent!</h2>
+            {lastReport && (
+              <div className="flex flex-col items-center gap-1.5">
+                <span className={`px-2.5 py-0.5 rounded-full font-label-sm text-label-sm ${(DOC_BADGE[lastReport.documentType] || DOC_BADGE.MIXED).cls}`}>
+                  {(DOC_BADGE[lastReport.documentType] || DOC_BADGE.MIXED).text}
+                </span>
+                <p className="font-body-md text-body-md text-on-surface font-medium">{lastReport.title}</p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant">
+                  💊 {lastReport.medicineCount} medicine(s) · 🧪 {lastReport.labCount} lab parameter(s) extracted
+                </p>
+              </div>
+            )}
+            <p className="font-body-sm text-body-sm text-on-surface-variant">
+              ✓ Check the kiosk screen to see your extracted medicines and reports.
+            </p>
+            <button
+              onClick={addAnother}
+              className="mt-2 px-5 py-3.5 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-sm hover:bg-primary-container transition-colors flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[20px]">add_a_photo</span>
+              + Add Another Report / दूसरी रिपोर्ट जोड़ें
+            </button>
           </div>
-          <h2 className="font-headline-sm text-headline-sm text-on-surface font-semibold">Document Sent!</h2>
-          <p className="font-body-md text-body-md text-on-surface-variant">
-            ✓ Check the kiosk screen to see your extracted medicines and reports.
-          </p>
-          <button onClick={reset} className="mt-2 px-5 py-2.5 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[18px]">add_a_photo</span>
-            Scan Another
-          </button>
-        </div>
+          <ReportList reports={reports} />
+        </>
       ) : (
         <>
           {/* Pick buttons */}
@@ -152,7 +233,7 @@ export default function MobileScan() {
                 {status === 'uploading' ? (
                   <>
                     <span className="material-symbols-outlined text-[20px] animate-spin">refresh</span>
-                    Sending to Triage Kiosk & Extracting Clinical Insights…
+                    Sending to Triage Kiosk &amp; Extracting Clinical Insights…
                   </>
                 ) : (
                   <>
@@ -163,6 +244,8 @@ export default function MobileScan() {
               </button>
             </div>
           )}
+
+          <ReportList reports={reports} />
         </>
       )}
 

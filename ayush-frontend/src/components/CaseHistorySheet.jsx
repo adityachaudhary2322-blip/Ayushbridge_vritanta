@@ -1,3 +1,5 @@
+import { normalizeClinicalDocs, flagStyle, docTypeLabel } from '../utils/clinicalDocs';
+
 // Printable A4 "Combined Total Case History Sheet" — Ministry of AYUSH format.
 // Rendered in an overlay; window.print() + @media print CSS isolate the sheet.
 
@@ -17,7 +19,7 @@ function fmt(ts) {
 export default function CaseHistorySheet({ patient, onClose }) {
   if (!patient) return null;
   const p = patient;
-  const ocr = p.documents?.ocrData;
+  const clinical = normalizeClinicalDocs(p.documents);
   const tag = PRIORITY_TAG[p.triageLevel] || PRIORITY_TAG.P3;
   const token = p.id ? `AYUSH-${String(p.id).slice(-6).toUpperCase()}` : 'AYUSH-000000';
   const agni = p.agni || p.ayurvedicNotes?.agni || '—';
@@ -104,7 +106,7 @@ export default function CaseHistorySheet({ patient, onClose }) {
           <Row label="Red Flags / Alerts" value={(p.redFlags && p.redFlags !== 'None') ? p.redFlags : (p.surgicalAlert ? 'Surgical alert flagged' : 'None')} />
         </Section>
 
-        <Section n={3} title="Ayurvedic Assessment">
+        <Section n={3} title="AYUSH Rogi Pariksha (Ayurvedic Assessment)">
           <Row label="Dosha Imbalance" value={p.dosha} />
           <Row label="Agni (Digestive Fire)" value={agni} />
           <Row label="Koshtha (Bowel)" value={koshtha} />
@@ -113,34 +115,73 @@ export default function CaseHistorySheet({ patient, onClose }) {
           <Row label="Bala & Lifestyle (Energy)" value={(p.energy_lifestyle && p.energy_lifestyle !== 'N/A') ? p.energy_lifestyle : '—'} />
         </Section>
 
-        <Section n={4} title="Document OCR Findings">
-          <Row label="Document Type" value={ocr?.documentType || 'No document uploaded'} />
-          <div style={{ padding: '2px 0' }}>
-            <span style={{ minWidth: 150, color: '#555', fontWeight: 600, display: 'inline-block' }}>Current Medications</span>
-            {ocr?.medicines?.length ? (
-              <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
-                {ocr.medicines.map((m, i) => (
-                  <li key={i} style={{ marginBottom: 2 }}>{m.name}{m.dosage ? ` — ${m.dosage}` : ''} {m.ayushCategory && m.ayushCategory !== 'Unknown' ? `(${m.ayushCategory})` : ''}</li>
-                ))}
-              </ul>
-            ) : <span> {p.meds && p.meds !== 'None' ? p.meds : '— None recorded'}</span>}
-          </div>
-          <div style={{ padding: '4px 0' }}>
-            <span style={{ minWidth: 150, color: '#555', fontWeight: 600, display: 'inline-block' }}>Abnormal Lab Markers</span>
-            {ocr?.abnormalLabValues?.length ? (
-              <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
-                {ocr.abnormalLabValues.map((l, i) => (
-                  <li key={i} style={{ marginBottom: 2, color: l.flag === 'High' ? '#b3261e' : l.flag === 'Low' ? '#e8710a' : '#111' }}>
-                    {l.test}: <strong>{l.value}</strong> {l.flag ? `(${l.flag})` : ''}
-                  </li>
-                ))}
-              </ul>
-            ) : <span> {p.labs && p.labs !== 'None' ? p.labs : '— None recorded'}</span>}
-          </div>
-          {ocr?.clinicalImpressions && <Row label="Doctor Impression (OCR)" value={ocr.clinicalImpressions} />}
+        <Section n={4} title="Active Medications (Aushadhi Sevana)">
+          <Row
+            label="Source Documents"
+            value={clinical.reports.length
+              ? clinical.reports.map(r => `${docTypeLabel(r.documentType)} — ${r.title || r.fileName}`).join(' | ')
+              : (p.documents?.ocrData?.documentType || 'No document uploaded')}
+          />
+          {clinical.medicines.length ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+              {clinical.medicines.map((m, i) => (
+                <span key={i} style={{ border: '1px solid #188038', borderRadius: 14, padding: '3px 10px', fontSize: 11.5, background: '#f2f8f3', color: '#111' }}>
+                  <strong>{m.name}</strong>
+                  {m.dosage ? ` · ${m.dosage}` : ''}
+                  {m.frequency ? ` · ${m.frequency}` : ''}
+                  {m.instructions ? ` (${m.instructions})` : ''}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <Row label="Current Medications" value={p.meds && p.meds !== 'None' ? p.meds : 'None recorded'} />
+          )}
         </Section>
 
-        <Section n={5} title="Physician Clinical Diagnosis & Plan">
+        <Section n={5} title="Diagnostic Lab Matrix">
+          {clinical.labTests.length ? (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, marginTop: 4 }}>
+              <thead>
+                <tr style={{ background: '#f1f3f4' }}>
+                  <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #ddd', width: '34%' }}>Test Parameter</th>
+                  <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #ddd', width: '22%' }}>Observed Value</th>
+                  <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #ddd', width: '28%' }}>Normal Range</th>
+                  <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #ddd', width: '16%' }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clinical.labTests.map((l, i) => {
+                  const st = flagStyle(l.flag);
+                  return (
+                    <tr key={i}>
+                      <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>{l.testName}</td>
+                      <td style={{ padding: '5px 8px', border: '1px solid #ddd', fontWeight: 700 }}>{l.observedValue || '—'}</td>
+                      <td style={{ padding: '5px 8px', border: '1px solid #ddd', color: '#555' }}>{l.referenceRange || '—'}</td>
+                      <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>
+                        <span style={{ background: st.print, color: '#fff', borderRadius: 12, padding: '2px 9px', fontSize: 10.5, fontWeight: 700 }}>{st.label}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <Row label="Lab Markers" value={p.labs && p.labs !== 'None' ? p.labs : 'None recorded'} />
+          )}
+          {clinical.observations && <div style={{ marginTop: 6 }}><Row label="Clinical Observations" value={clinical.observations} /></div>}
+        </Section>
+
+        <Section n={6} title="AI Diagnostic Correlation">
+          <div style={{ background: '#f7f5ff', borderLeft: '3px solid #6750a4', padding: '8px 10px', fontSize: 12, lineHeight: 1.55 }}>
+            {p.diagnosticCorrelation || clinical.correlation ||
+              `Reported markers — Dosha ${p.dosha || '—'}, Agni ${agni}, Koshtha ${koshtha}. ${clinical.labTests.length ? 'Correlate the lab matrix above with these Ayurvedic markers during examination.' : 'No prior records available for correlation.'}`}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: '#666' }}>
+            AI-generated correlation of past prescriptions and lab markers with current Rogi Pariksha findings — requires physician verification.
+          </div>
+        </Section>
+
+        <Section n={7} title="Physician Clinical Diagnosis & Plan">
           <Row label="AI Recommendation" value={p.recommendation} />
           <div style={{ marginTop: 8 }}>
             <div style={{ color: '#555', fontWeight: 600, marginBottom: 4 }}>Clinical Diagnosis</div>
