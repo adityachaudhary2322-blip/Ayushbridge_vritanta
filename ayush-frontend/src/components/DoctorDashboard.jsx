@@ -21,6 +21,7 @@ export default function DoctorDashboard() {
   const [openDocsId, setOpenDocsId] = useState(null);   // which patient card's docs accordion is open
   const [docModal, setDocModal] = useState(null);        // documents record shown in inspection modal
   const [caseSheet, setCaseSheet] = useState(null);      // patient record shown in printable A4 case sheet
+  const [autoPdf, setAutoPdf] = useState(false);         // open the sheet and export straight away
 
   useEffect(() => {
     fetchPatients();
@@ -447,8 +448,11 @@ export default function DoctorDashboard() {
                           <button onClick={() => handleZoom(p)} disabled={zoomLoading} className="px-3 py-1.5 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
                             <span className="material-symbols-outlined text-[15px]">videocam</span> {zoomLoading ? 'Creating…' : 'Zoom'}
                           </button>
-                          <button onClick={() => setCaseSheet(p)} className="px-3 py-1.5 rounded-xl bg-tertiary-container/50 text-on-tertiary-container hover:bg-tertiary-container font-label-md text-label-md flex items-center gap-1 transition-colors shadow-sm">
-                            <span className="material-symbols-outlined text-[15px]">print</span> Print Total Case History (PDF)
+                          <button onClick={() => { setAutoPdf(true); setCaseSheet(p); }} className="px-3 py-1.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md flex items-center gap-1 transition-all shadow-sm">
+                            <span className="material-symbols-outlined text-[15px]">download</span> 📥 Save / Download PDF (पीडीएफ डाउनलोड)
+                          </button>
+                          <button onClick={() => { setAutoPdf(false); setCaseSheet(p); }} className="px-3 py-1.5 rounded-xl bg-tertiary-container/50 text-on-tertiary-container hover:bg-tertiary-container font-label-md text-label-md flex items-center gap-1 transition-colors shadow-sm">
+                            <span className="material-symbols-outlined text-[15px]">print</span> Print Total Case History
                           </button>
                           <button onClick={() => openCaseReport(p)} className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
                             <span className="material-symbols-outlined text-[15px]">description</span> Case Report
@@ -709,7 +713,7 @@ export default function DoctorDashboard() {
 
       {/* Printable A4 Combined Case History Sheet */}
       {caseSheet && (
-        <CaseHistorySheet patient={caseSheet} onClose={() => setCaseSheet(null)} />
+        <CaseHistorySheet patient={caseSheet} autoDownload={autoPdf} onClose={() => { setCaseSheet(null); setAutoPdf(false); }} />
       )}
 
       {/* Document Inspection Modal */}
