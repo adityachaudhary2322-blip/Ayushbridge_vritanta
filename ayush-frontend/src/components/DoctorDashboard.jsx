@@ -4,6 +4,7 @@ import ClinicalBriefingModal from './ClinicalBriefingModal';
 import PatientAdviceDrawer from './PatientAdviceDrawer';
 import CaseReportModal from './CaseReportModal';
 import CaseHistorySheet from './CaseHistorySheet';
+import DiagnosisRxPanel from './DiagnosisRxPanel';
 import { normalizeClinicalDocs, flagStyle, docTypeLabel, docTime } from '../utils/clinicalDocs';
 
 const API = '/api';
@@ -22,6 +23,8 @@ export default function DoctorDashboard() {
   const [docModal, setDocModal] = useState(null);        // documents record shown in inspection modal
   const [caseSheet, setCaseSheet] = useState(null);      // patient record shown in printable A4 case sheet
   const [autoPdf, setAutoPdf] = useState(false);         // open the sheet and export straight away
+  const [openRxId, setOpenRxId] = useState(null);        // which patient card's Rx builder is expanded
+  const [consults, setConsults] = useState({});          // id → signed consultation, mirrored locally for instant print
 
   useEffect(() => {
     fetchPatients();
@@ -36,6 +39,9 @@ export default function DoctorDashboard() {
       if (Array.isArray(data)) setPatients(data);
     } catch { /* ignore — keep last-known queue */ }
   };
+
+  // A just-signed Rx must reach the A4 sheet before the 10s queue poll returns it.
+  const withConsult = (p) => (p ? { ...p, consultation: consults[p.id] || p.consultation } : p);
 
   const PRIORITY_BADGE = {
     P1: 'bg-error-container text-on-error-container',
@@ -239,6 +245,8 @@ export default function DoctorDashboard() {
                   const clinical = normalizeClinicalDocs(docs);
                   const hasDocs = clinical.hasData;
                   const isOpen = openDocsId === p.id;
+                  const rxOpen = openRxId === p.id;
+                  const signed = consults[p.id] || p.consultation;
                   return (
                     <div key={p.id} className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden ring-1 ring-surface-container-high">
                       {/* Card header: priority + demographics */}
@@ -458,6 +466,29 @@ export default function DoctorDashboard() {
                             <span className="material-symbols-outlined text-[15px]">description</span> Case Report
                           </button>
                         </div>
+
+                        {/* Physician diagnosis & prescription builder */}
+                        <button
+                          onClick={() => setOpenRxId(rxOpen ? null : p.id)}
+                          className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-on-surface flex items-center justify-between gap-2 transition-colors ring-1 ring-primary/25"
+                        >
+                          <span className="inline-flex items-center gap-2 font-label-md text-label-md font-semibold text-left">
+                            <span className="material-symbols-outlined text-primary text-[18px]">prescriptions</span>
+                            नुस्खा — Diagnosis &amp; Prescription (Rx)
+                            {signed && (
+                              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-label-sm text-label-sm">
+                                ✓ Signed
+                              </span>
+                            )}
+                          </span>
+                          <span className="material-symbols-outlined text-on-surface-variant text-[20px]">{rxOpen ? 'expand_less' : 'expand_more'}</span>
+                        </button>
+                        {rxOpen && (
+                          <DiagnosisRxPanel
+                            patient={withConsult(p)}
+                            onSaved={(c) => setConsults(prev => ({ ...prev, [p.id]: c }))}
+                          />
+                        )}
                       </div>
                     </div>
                   );
@@ -713,7 +744,7 @@ export default function DoctorDashboard() {
 
       {/* Printable A4 Combined Case History Sheet */}
       {caseSheet && (
-        <CaseHistorySheet patient={caseSheet} autoDownload={autoPdf} onClose={() => { setCaseSheet(null); setAutoPdf(false); }} />
+        <CaseHistorySheet patient={withConsult(caseSheet)} autoDownload={autoPdf} onClose={() => { setCaseSheet(null); setAutoPdf(false); }} />
       )}
 
       {/* Document Inspection Modal */}

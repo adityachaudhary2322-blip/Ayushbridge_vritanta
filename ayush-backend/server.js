@@ -706,6 +706,74 @@ app.post('/api/zoom/create', async (req, res) => {
   }
 });
 
+// ── POST /api/consultation/save — physician diagnosis + prescription sign-off ──
+// The dashboard derives its display token from the record id, so a lookup has to
+// accept the raw id, the AYUSH-XXXXXX token, or a stored token alias.
+const CONSULT_FORMS = ['Tablet', 'Capsule', 'Churna', 'Kwath', 'Syrup', 'Ointment', 'Other'];
+
+function tokenOf(record) {
+  return record.token || `AYUSH-${String(record.id || '').slice(-6).toUpperCase()}`;
+}
+
+function matchesToken(record, token) {
+  if (!record || !token) return false;
+  const t = String(token).trim().toUpperCase();
+  return [record.id, record.patientId, record.token, tokenOf(record)]
+    .filter(Boolean)
+    .some(v => String(v).toUpperCase() === t);
+}
+
+function sanitizePrescription(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map(m => ({
+      name: String(m?.name || '').trim(),
+      form: CONSULT_FORMS.includes(m?.form) ? m.form : (String(m?.form || '').trim() || 'Tablet'),
+      dosage: String(m?.dosage || '').trim(),
+      timing: String(m?.timing || '').trim(),
+      duration: String(m?.duration || '').trim(),
+    }))
+    .filter(m => m.name);          // an unnamed row is an empty builder line, not a drug
+}
+
+app.post('/api/consultation/save', (req, res) => {
+  const {
+    token, diagnosis, ayushDiagnosis, clinicalNotes,
+    prescription, advice, followUpDate, status,
+  } = req.body || {};
+
+  if (!token) return res.status(400).json({ success: false, error: 'token is required' });
+
+  const consultation = {
+    diagnosis: String(diagnosis || '').trim(),
+    ayushDiagnosis: String(ayushDiagnosis || '').trim(),
+    clinicalNotes: String(clinicalNotes || '').trim(),
+    prescription: sanitizePrescription(prescription),
+    advice: String(advice || '').trim(),
+    followUpDate: String(followUpDate || '').trim(),
+    signedBy: 'Dr. Ananya Sharma, BAMS, MD (Ayurveda)',
+    regNo: 'AY-DL-88421',
+    signedAt: new Date().toISOString(),
+  };
+  const nextStatus = status === 'CONSULTED' ? 'CONSULTED' : 'COMPLETED';
+
+  // Same record object is shared by both stores for live records, but demo/legacy
+  // entries can diverge — patch every match so the queue and /api/patients agree.
+  const targets = [...patientQueue, ...globalPatients].filter(r => matchesToken(r, token));
+  targets.forEach(r => {
+    r.consultation = consultation;
+    r.status = nextStatus;
+    r.token = r.token || tokenOf(r);
+  });
+
+  if (!targets.length) {
+    // Demo rows aren't in the in-memory queue; the sheet still needs to print.
+    return res.json({ success: true, persisted: false, token, status: nextStatus, consultation });
+  }
+
+  res.json({ success: true, persisted: true, token, status: nextStatus, consultation, record: targets[0] });
+});
+
 // ── GET /api/patients ─────────────────────────────────────────────────────────
 app.get('/api/patients', (req, res) => {
   res.json(globalPatients);
