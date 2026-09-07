@@ -98,6 +98,43 @@ Also weigh these when present:
 - Energy & Lifestyle (Bala/Hydration): severe fatigue/weakness lowers Dhatwagni/Bala and warrants closer review; lethargy/heaviness suggests Kapha.
 - Chronic history & red flags (Purva Vyadhi): pre-existing Diabetes, Hypertension, Thyroid, asthma/breathlessness or drug allergies raise clinical urgency (consider P2) and MUST be surfaced in redFlags.`;
 
+// ── Supported speech languages ────────────────────────────────────────────────
+// Kiosk intake runs in all 11; a teleconsult CALL is restricted to Hindi/English
+// so the attending physician can always follow the conversation live.
+const LANGUAGE_NAMES = {
+  'hi-IN': 'Hindi', 'en-IN': 'English', 'bn-IN': 'Bengali', 'ta-IN': 'Tamil',
+  'te-IN': 'Telugu', 'mr-IN': 'Marathi', 'gu-IN': 'Gujarati', 'kn-IN': 'Kannada',
+  'ml-IN': 'Malayalam', 'pa-IN': 'Punjabi', 'od-IN': 'Odia',
+};
+const TELECONSULT_CODES = new Set(['hi-IN', 'en-IN']);
+const SHORT_CODE = { hi: 'hi-IN', en: 'en-IN' };
+
+/** Accepts 'hi', 'ta-IN', 'TA-in'; returns a supported code or the fallback. */
+function normalizeLangCode(code, fallback = 'en-IN') {
+  if (!code) return fallback;
+  const raw = String(code).trim();
+  const full = SHORT_CODE[raw.toLowerCase()] || `${raw.split('-')[0].toLowerCase()}-IN`;
+  return LANGUAGE_NAMES[full] ? full : fallback;
+}
+
+/** Hard guard: a regional language must never reach a live teleconsult call. */
+function coerceTeleconsultCode(code, fallback = 'hi-IN') {
+  const full = normalizeLangCode(code, fallback);
+  return TELECONSULT_CODES.has(full) ? full : fallback;
+}
+
+const languageName = (code) => LANGUAGE_NAMES[normalizeLangCode(code)] || 'English';
+
+/**
+ * Conversational-language instruction for Gemini. The patient side of the
+ * conversation follows their chosen language; the structured clinical summary the
+ * physician reads must stay in English/Hindi regardless.
+ */
+function languageInstruction(code) {
+  const name = languageName(code);
+  return `The patient has chosen ${name}. Conduct the conversation, ask follow-up questions, and provide patient responses in ${name}. However, always output the final structured clinical JSON summary (chiefComplaint, hpi, diagnosis, ayushCorrelation, dosha, agni) strictly in English/Hindi for the attending physician.`;
+}
+
 function isHindiInput(transcript, context) {
   if (context?.lang === 'hi') return true;
   return /[ऀ-ॿ]/.test(transcript);
@@ -105,9 +142,13 @@ function isHindiInput(transcript, context) {
 
 // ── POST /api/sarvam-tts ──────────────────────────────────────────────────────
 app.post('/api/sarvam-tts', async (req, res) => {
-  const { text, lang } = req.body;
+  const { text, lang, target_language_code, surface } = req.body;
   if (!text || !String(text).trim()) return res.status(400).json({ success: false, error: 'text is required and must be non-empty' });
   if (!SARVAM_KEY) return res.status(503).json({ success: false, error: 'SARVAM_API_KEY not configured' });
+
+  // Explicit full code wins; legacy 'hi'/'en' callers still work unchanged.
+  let targetLang = normalizeLangCode(target_language_code || lang, 'en-IN');
+  if (surface === 'teleconsult') targetLang = coerceTeleconsultCode(targetLang);
 
   try {
     const response = await fetch(SARVAM_TTS_URL, {
@@ -118,7 +159,7 @@ app.post('/api/sarvam-tts', async (req, res) => {
       },
       body: JSON.stringify({
         text: String(text).slice(0, 1500),
-        language_code: lang === 'hi' ? 'hi-IN' : 'en-IN',
+        target_language_code: targetLang,
         model: 'bulbul:v3',
         speaker: 'shubh',
         pace: 0.95
@@ -158,8 +199,15 @@ app.post('/api/sarvam-stt', upload.any(), async (req, res) => {
     }
     if (!SARVAM_KEY) return res.status(503).json({ success: false, error: 'SARVAM_API_KEY not configured' });
 
-    // 'unknown' lets Saaras auto-detect Hindi/English; caller may override.
-    const lang = req.body?.language_code || 'unknown';
+    // 'unknown' lets Saaras auto-detect; a caller may pin any supported language.
+    // A teleconsult call is clamped to Hindi/English even if a regional code leaks in.
+    const requested = req.body?.language_code;
+    let lang = 'unknown';
+    if (requested && requested !== 'unknown') {
+      lang = req.body?.surface === 'teleconsult'
+        ? coerceTeleconsultCode(requested)
+        : normalizeLangCode(requested, 'unknown');
+    }
     const formData = new FormData();
     const audioBlob = new Blob([uploadedFile.buffer], { type: 'audio/webm' });
 
@@ -192,7 +240,11 @@ app.post('/api/sarvam-stt', upload.any(), async (req, res) => {
 
 // ── POST /api/ask-followup ────────────────────────────────────────────────────
 app.post('/api/ask-followup', async (req, res) => {
-  const { transcript, history, langHint } = req.body;
+  const { transcript, history, langHint, language_code, surface } = req.body;
+  // Kiosk intake may run in any of the 11 languages; a call stays Hindi/English.
+  const convoLang = surface === 'teleconsult'
+    ? coerceTeleconsultCode(language_code)
+    : normalizeLangCode(language_code, '');
   if (!transcript && (!Array.isArray(history) || history.length === 0)) {
     return res.json({ question: 'Please describe your symptoms.' });
   }
@@ -226,8 +278,13 @@ app.post('/api/ask-followup', async (req, res) => {
       contents = [{ role: 'user', parts: [{ text: transcript + (langHint ? `\n\n[Instruction: ${langHint}]` : '') }] }];
     }
 
+    const systemText = convoLang
+      ? `${FOLLOWUP_SYSTEM}
+
+${languageInstruction(convoLang)}`
+      : FOLLOWUP_SYSTEM;
     const body = {
-      system_instruction: { parts: [{ text: FOLLOWUP_SYSTEM }] },
+      system_instruction: { parts: [{ text: systemText }] },
       contents,
     };
     const response = await fetch(GEMINI_URL, {
@@ -308,7 +365,13 @@ app.post('/api/triage', async (req, res) => {
   };
 
   try {
-    const raw = await gemini(TRIAGE_SYSTEM, analysisInput || 'No details provided.', true);
+    // The transcript may arrive in any kiosk language — the JSON must not.
+    const triageSystem = lang
+      ? `${TRIAGE_SYSTEM}
+
+${languageInstruction(lang)}`
+      : TRIAGE_SYSTEM;
+    const raw = await gemini(triageSystem, analysisInput || 'No details provided.', true);
     const parsed = JSON.parse(raw);
     // Prefer patient-reported agni/koshtha when the model didn't override meaningfully
     const triageResult = {

@@ -12,6 +12,16 @@ export function detectMode(text) {
 // the previous one.
 let _activeAudio = null;
 
+// 'hi' → 'hi-IN', 'ta-IN' → 'ta-IN'. Anything unrecognised stays undefined so the
+// backend keeps its own default rather than handing Sarvam an invalid code.
+const SHORT_CODE = { hi: 'hi-IN', en: 'en-IN' };
+export function normalizeSpeechCode(lang) {
+  if (!lang) return undefined;
+  const raw = String(lang).trim();
+  if (SHORT_CODE[raw.toLowerCase()]) return SHORT_CODE[raw.toLowerCase()];
+  return /^[a-z]{2}-IN$/i.test(raw) ? `${raw.slice(0, 2).toLowerCase()}-IN` : undefined;
+}
+
 export function stopSarvamAudio() {
   if (_activeAudio) {
     try { _activeAudio.pause(); _activeAudio.currentTime = 0; _activeAudio.src = ''; } catch { /* ignore */ }
@@ -33,7 +43,13 @@ export async function sarvamTTS(text, lang, { onNetworkError, volume = 1.0, sink
     const res = await fetch('/api/sarvam-tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text.slice(0, 1500), lang: lang === 'hi' ? 'hi' : 'en' }),
+      // `lang` may be a legacy short code ('hi'/'en') or a full kiosk code
+      // ('ta-IN'); the backend normalises either into target_language_code.
+      body: JSON.stringify({
+        text: text.slice(0, 1500),
+        lang,
+        target_language_code: normalizeSpeechCode(lang),
+      }),
     });
     if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
     data = await res.json();

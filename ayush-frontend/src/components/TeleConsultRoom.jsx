@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam';
+import { TELECONSULT_LANGUAGES, coerceTeleconsultLang, uiVariant } from '../utils/languages';
 
 const STAGES = ['name', 'ageGender', 'complaint', 'has_documents', 'agni', 'sleep', 'energy', 'history'];
 
@@ -147,7 +148,7 @@ export default function TeleConsultRoom() {
     stopRec(); // strict mic cutoff during playback
     setBotStatus('speaking');
     setCaption(text);
-    await sarvamTTS(text, (forceLang || langRef.current) === 'hi' ? 'hi' : 'en', {
+    await sarvamTTS(text, coerceTeleconsultLang(forceLang || langRef.current), {
       onNetworkError: netErr,
       volume: audioOutputModeRef.current === 'earpiece' ? 0.35 : 1.0,
       sinkId: audioOutputModeRef.current === 'earpiece' ? (earpieceSinkRef.current || undefined) : 'default',
@@ -170,11 +171,15 @@ export default function TeleConsultRoom() {
   });
 
   // IVR voice detection OR the on-screen buttons
+  // A call is Hindi/English ONLY — the physician has to follow it live, so any
+  // regional code (deep link, stale kiosk hand-off, mis-detected IVR reply) is
+  // collapsed here rather than being allowed through to STT/TTS.
   const chooseLang = (l) => {
     if (langChosenRef.current) return;
     langChosenRef.current = true;
-    langRef.current = l;
-    setLang(l);
+    const safe = uiVariant(coerceTeleconsultLang(l));
+    langRef.current = safe;
+    setLang(safe);
     setVoiceError('');
     stopRec(); // cancel any in-progress voice detection for this step
     setBotStatus('idle');
@@ -237,7 +242,7 @@ export default function TeleConsultRoom() {
           name: f.name, age: f.age, gender: f.gender,
           symptoms: f.complaint, agni: f.agni, koshtha: f.koshtha,
           sleep_stress: f.sleep_stress, energy_lifestyle: f.energy_lifestyle, chronic_history: f.chronic_history,
-          sessionId, lang: langRef.current, room,
+          sessionId, lang: coerceTeleconsultLang(langRef.current), room,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -297,7 +302,7 @@ export default function TeleConsultRoom() {
 
   async function askAndListen(stageKey, attempt, token) {
     if (!stageAlive(token)) return;
-    const code = langRef.current === 'hi' ? 'hi-IN' : 'en-IN';
+    const code = coerceTeleconsultLang(langRef.current);
     await speak(attempt === 0 ? Q[stageKey][langRef.current] : REPROMPT[langRef.current]);
     if (!stageAlive(token)) return;
     const r = await listenOnce({ langCode: code });
@@ -345,7 +350,7 @@ export default function TeleConsultRoom() {
     setTranscript('');
     await speak(DOC_Q[langRef.current], langRef.current);
     if (!stageAlive(token)) return;
-    const r = await listenOnce({ langCode: langRef.current === 'hi' ? 'hi-IN' : 'en-IN' });
+    const r = await listenOnce({ langCode: coerceTeleconsultLang(langRef.current) });
     if (!stageAlive(token)) return;
     if (r.status === 'ok') {
       const intent = detectDocIntent(r.text);
@@ -525,14 +530,19 @@ export default function TeleConsultRoom() {
         {phase === 'ivr' && !triageResult && (
           <div className="absolute inset-x-0 bottom-24 flex flex-col items-center gap-3">
             <div className="flex gap-3">
-              <button onClick={() => chooseLang('hi')} className="px-6 py-4 rounded-2xl bg-primary text-on-primary font-title-md text-title-md shadow-lg hover:bg-primary-container transition-all flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-white/25 flex items-center justify-center font-bold">1</span>
-                हिंदी (Hindi)
-              </button>
-              <button onClick={() => chooseLang('en')} className="px-6 py-4 rounded-2xl bg-white text-neutral-900 font-title-md text-title-md shadow-lg hover:bg-neutral-100 transition-all flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-neutral-900/10 flex items-center justify-center font-bold">2</span>
-                English
-              </button>
+              {/* Rendered from TELECONSULT_LANGUAGES — a call can only ever offer these two. */}
+              {TELECONSULT_LANGUAGES.map((l, i) => (
+                <button
+                  key={l.code}
+                  onClick={() => chooseLang(l.code)}
+                  className={`px-6 py-4 rounded-2xl font-title-md text-title-md shadow-lg transition-all flex items-center gap-2 ${
+                    i === 0 ? 'bg-primary text-on-primary hover:bg-primary-container' : 'bg-white text-neutral-900 hover:bg-neutral-100'
+                  }`}
+                >
+                  <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${i === 0 ? 'bg-white/25' : 'bg-neutral-900/10'}`}>{i + 1}</span>
+                  {l.native}{l.native === l.name ? '' : ` (${l.name})`}
+                </button>
+              ))}
             </div>
             <p className="font-label-md text-label-md text-white/70">{lang === 'hi' ? 'बोलें या दबाएं' : 'Press or say 1 / 2'}</p>
           </div>

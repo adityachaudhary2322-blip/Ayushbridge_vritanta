@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam';
+import { KIOSK_LANGUAGES, DEFAULT_KIOSK_LANG, uiVariant, languageNative } from '../utils/languages';
+import { speechFor } from '../utils/kioskSpeech';
 
 const DOC_TYPE_PILL = {
   PRESCRIPTION: '📄 Prescription',
@@ -11,10 +13,8 @@ const DOC_TYPE_PILL = {
 
 const STAGES = ['name', 'ageGender', 'mobile', 'complaint', 'has_documents', 'agni', 'sleep', 'energy', 'history'];
 
-const DOC_Q = {
-  en: 'Do you have any past prescription or lab test report you would like to scan?',
-  hi: 'क्या आपके पास कोई पुरानी डॉक्टर की पर्ची या लैब रिपोर्ट है जिसे आप अपलोड करना चाहते हैं?',
-};
+// Spoken prompts for every stage live in utils/kioskSpeech.js (all 11 languages).
+
 function detectDocIntent(text) {
   const tl = (text || '').toLowerCase();
   if (/हाँ|हां|haan|\bha\b|\byes\b|scan|पर्ची|पर्चा|pardi|pardhi|report|रिपोर्ट/.test(tl)) return 'yes';
@@ -22,17 +22,6 @@ function detectDocIntent(text) {
   return null;
 }
 
-const Q = {
-  name:      { en: 'Namaste! Welcome to AYUSH Swasthya Sahayak. Please say your full name.',           hi: 'नमस्ते! आयुष स्वास्थ्य सहायक में आपका स्वागत है। कृपया अपना पूरा नाम बोलें।' },
-  ageGender: { en: 'Thank you. Please tell me your age and gender.',                                    hi: 'धन्यवाद। कृपया अपनी उम्र और लिंग बताएं।' },
-  mobile:    { en: 'Please say your ten-digit mobile number.',                                          hi: 'कृपया अपना दस अंकों का मोबाइल नंबर बोलें।' },
-  complaint: { en: 'What health problem are you facing, and since how many days?',                      hi: 'आपको क्या स्वास्थ्य समस्या है, और कितने दिनों से है?' },
-  agni:      { en: 'How is your appetite and digestion? Any constipation or irregular bowels?',        hi: 'आपकी भूख और पाचन कैसा है? कब्ज या अनियमित पेट तो नहीं?' },
-  sleep:     { en: 'How is your sleep quality? Do you experience broken sleep, insomnia, or high stress and anxiety?', hi: 'आपकी नींद कैसी है — क्या रात में नींद टूटती है या अत्यधिक तनाव व चिंता महसूस होती है?' },
-  energy:    { en: 'How is your daily energy level — excessive fatigue, lethargy, or normal? Do you stay well-hydrated?', hi: 'दिनभर आपका ऊर्जा स्तर कैसा रहता है — अत्यधिक सुस्ती, कमजोरी या सामान्य? क्या पर्याप्त पानी पीते हैं?' },
-  history:   { en: 'Do you have any pre-existing conditions — Diabetes, Hypertension, Thyroid, asthma, or drug allergies?', hi: 'क्या आपको पहले से कोई पुरानी बीमारी है — जैसे बीपी, शुगर, थायराइड, सांस फूलना या किसी दवा से एलर्जी?' },
-};
-const REPROMPT = { en: 'Please speak a bit louder.', hi: 'कृपया थोड़ा ज़ोर से बोलें।' };
 const STAGE_LABEL = {
   name: { en: 'Name', hi: 'नाम' }, ageGender: { en: 'Age & Gender', hi: 'उम्र व लिंग' },
   mobile: { en: 'Mobile', hi: 'मोबाइल' }, complaint: { en: 'Complaint', hi: 'तकलीफ' },
@@ -80,8 +69,15 @@ function parseDigestion(text) {
 export default function TouchlessKiosk() {
   const navigate = useNavigate();
 
-  const [lang, setLang] = useState('en');
-  const langRef = useRef('en');
+  // `selectedLang` is the patient's full language code (all 11 kiosk languages) and
+  // is what Sarvam STT/TTS receive. The on-screen copy exists in Hindi/English only,
+  // so `lang` is the derived UI variant — speech stays in the patient's language.
+  const [selectedLang, setSelectedLang] = useState(DEFAULT_KIOSK_LANG);
+  const selectedLangRef = useRef(DEFAULT_KIOSK_LANG);
+  useEffect(() => { selectedLangRef.current = selectedLang; }, [selectedLang]);
+
+  const lang = uiVariant(selectedLang);
+  const langRef = useRef(uiVariant(DEFAULT_KIOSK_LANG));
   useEffect(() => { langRef.current = lang; }, [lang]);
 
   const [started, setStarted] = useState(false);
@@ -121,15 +117,22 @@ export default function TouchlessKiosk() {
   }, []);
 
   // ── Voice primitives ─────────────────────────────────────────────────────────
-  const speak = useCallback(async (text) => {
+  const speak = useCallback(async (text, code) => {
     setBotStatus('speaking');
     setCaption(text);
-    await sarvamTTS(text, langRef.current, {
+    await sarvamTTS(text, code || selectedLangRef.current, {
       onNetworkError: () => setVoiceError(langRef.current === 'hi'
         ? '⚠️ वॉयस सेवा त्रुटि — कृपया दोबारा प्रयास करें या नीचे टाइप/टैप करें।'
         : '⚠️ Voice Service Error reaching TTS — retry or type/tap your answer below.'),
     });
   }, []);
+
+  // Stage prompts: speechFor() guarantees the text and the TTS language code agree,
+  // falling back to the English line under en-IN rather than mismatching them.
+  const speakKey = useCallback(async (key) => {
+    const { text, code } = speechFor(selectedLangRef.current, key);
+    if (text) await speak(text, code);
+  }, [speak]);
 
   // Resolves to { status: 'ok'|'empty'|'error', text, code, msg }
   const listen = useCallback(() => new Promise((resolve) => {
@@ -140,7 +143,7 @@ export default function TouchlessKiosk() {
       initialWaitMs: 5000,      // up to 5s to BEGIN speaking
       trailingSilenceMs: 2000,  // stop 2s after they go quiet
       maxRecordMs: 9000,        // hard safety cutoff
-      langCode: langRef.current === 'hi' ? 'hi-IN' : 'en-IN',
+      langCode: selectedLangRef.current,
       onVolumeChange: (v) => setLiveVolume(v),
       onStop: () => { setBotStatus('thinking'); setLiveVolume(0); },
       onResult: (t) => resolve({ status: t ? 'ok' : 'empty', text: t }),
@@ -170,10 +173,7 @@ export default function TouchlessKiosk() {
     setBotStatus('thinking');
     setIsSubmitting(true);
     const f = fieldsRef.current;
-    const done = langRef.current === 'hi'
-      ? 'धन्यवाद! आपका पंजीकरण पूरा हो गया। कृपया अपने टोकन की प्रतीक्षा करें।'
-      : 'Thank you! Your registration is complete. Please wait for your token to be called.';
-    speak(done);
+    speakKey('done');
     try {
       const res = await fetch('/api/triage', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -182,7 +182,7 @@ export default function TouchlessKiosk() {
           name: f.name, age: f.age, gender: f.gender, phone: f.mobile,
           symptoms: f.complaint, agni: f.agni, koshtha: f.koshtha,
           sleep_stress: f.sleep_stress, energy_lifestyle: f.energy_lifestyle, chronic_history: f.chronic_history,
-          sessionId, lang: langRef.current,
+          sessionId, lang: selectedLangRef.current,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -201,7 +201,7 @@ export default function TouchlessKiosk() {
       setBotStatus('idle');
       setIsSubmitting(false);
     }
-  }, [speak, sessionId]);
+  }, [speakKey, sessionId]);
 
   // ── Resumable stage machine (voice OR chip/text can advance any step) ──────────
   const isAlive = (token) => activeRef.current && stageTokenRef.current === token;
@@ -222,7 +222,7 @@ export default function TouchlessKiosk() {
 
   async function askAndListen(stageKey, attempt, token) {
     if (!isAlive(token)) return;
-    await speak(attempt === 0 ? Q[stageKey][langRef.current] : REPROMPT[langRef.current]);
+    await speakKey(attempt === 0 ? stageKey : 'reprompt');
     if (!isAlive(token)) return;
     const r = await listen();
     if (!isAlive(token)) return; // a chip/text tap already advanced the stage
@@ -264,7 +264,7 @@ export default function TouchlessKiosk() {
     docAdvancedRef.current = false;
     setDocChoice('ask');
     setTranscript('');
-    await speak(DOC_Q[langRef.current]);
+    await speakKey('documents');
     if (!isAlive(token)) return;
     const r = await listen();
     if (!isAlive(token)) return;
@@ -335,6 +335,8 @@ export default function TouchlessKiosk() {
     setTriageResult(null); setStage('name'); stageRef.current = 'name'; stageTokenRef.current = 0;
     setCaption(''); setTranscript(''); setBotStatus('idle'); setStarted(false);
     setLiveVolume(0); setVoiceError(''); setTypedAnswer(''); setDocChoice('none'); docAdvancedRef.current = false;
+    // A shared kiosk must not carry one patient's language over to the next.
+    setSelectedLang(DEFAULT_KIOSK_LANG); selectedLangRef.current = DEFAULT_KIOSK_LANG;
   };
 
   // QR polling + cleanup
@@ -378,9 +380,9 @@ export default function TouchlessKiosk() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex items-center bg-surface-container rounded-full p-1 gap-1">
-            <button onClick={() => setLang('hi')} className={`px-3 py-1.5 rounded-full font-label-md text-label-md transition-all ${lang === 'hi' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>🇮🇳 हिंदी</button>
-            <button onClick={() => setLang('en')} className={`px-3 py-1.5 rounded-full font-label-md text-label-md transition-all ${lang === 'en' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>🇬🇧 English</button>
+          <div className="inline-flex items-center gap-1.5 bg-surface-container rounded-full px-3.5 py-1.5 font-label-md text-label-md text-on-surface">
+            <span className="material-symbols-outlined text-primary text-[17px]">translate</span>
+            <span>{languageNative(selectedLang)}</span>
           </div>
           <button onClick={() => navigate('/text-intake')} className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors">
             <span className="material-symbols-outlined text-[18px]">keyboard</span>
@@ -473,6 +475,45 @@ export default function TouchlessKiosk() {
                   <span className="material-symbols-outlined text-error text-[20px] shrink-0 mt-0.5">error</span>
                   <span>{voiceError} <span className="underline font-medium">{lang === 'hi' ? 'पुनः प्रयास करें' : 'Click to retry'}</span></span>
                 </button>
+              )}
+
+              {/* Stage 1 — language selection: all 11 kiosk languages, one touch each */}
+              {!started && (
+                <div className="w-full max-w-3xl flex flex-col items-center gap-3">
+                  <div className="flex items-center gap-2 text-on-surface">
+                    <span className="material-symbols-outlined text-primary text-[22px]">translate</span>
+                    <span className="font-title-md text-title-md font-semibold">अपनी भाषा चुनें · Choose Your Language</span>
+                  </div>
+                  <div
+                    role="radiogroup"
+                    aria-label="Kiosk intake language"
+                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 w-full"
+                  >
+                    {KIOSK_LANGUAGES.map((l) => {
+                      const active = selectedLang === l.code;
+                      return (
+                        <button
+                          key={l.code}
+                          role="radio"
+                          aria-checked={active}
+                          lang={l.code}
+                          onClick={() => setSelectedLang(l.code)}
+                          className={`px-4 py-3.5 rounded-2xl border-2 flex flex-col items-center gap-0.5 transition-all focus:outline-none focus:ring-4 focus:ring-primary/40 ${
+                            active
+                              ? 'bg-primary text-on-primary border-primary shadow-lg scale-[1.03]'
+                              : 'bg-surface-container-lowest text-on-surface border-surface-container-high hover:border-primary hover:bg-surface-container'
+                          }`}
+                        >
+                          <span className="font-title-md text-title-md font-semibold leading-tight">{l.flag} {l.native}</span>
+                          <span className={`font-label-sm text-label-sm ${active ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>{l.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="font-label-md text-label-md text-on-surface-variant text-center">
+                    आप अपनी भाषा में बोल सकते हैं · You may speak in {languageNative(selectedLang)}
+                  </p>
+                </div>
               )}
 
               {/* Controls */}
