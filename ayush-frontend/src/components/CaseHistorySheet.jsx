@@ -2,6 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { normalizeClinicalDocs, flagStyle, docTypeLabel, docTime } from '../utils/clinicalDocs';
 import { filledMedications, patientToken } from '../utils/consultation';
 import { PrintDiseaseTimeline } from './DiseaseTimeline';
+import { AYUSH_PILLARS, assessmentOf, aiAssessmentOf } from '../utils/ayushPillars';
+
+// National AYUSH print palette (Tailwind orange-500 / emerald-600).
+const SAFFRON = '#f97316';
+const EMERALD = '#059669';
 
 // Printable A4 "Combined Total Case History Sheet" — Ministry of AYUSH format.
 // Rendered in an overlay; window.print() + @media print CSS isolate the sheet.
@@ -10,7 +15,7 @@ const PRIORITY_TAG = {
   P1: { bg: '#b3261e', label: 'Critical' },
   P2: { bg: '#e8710a', label: 'Urgent' },
   P3: { bg: '#1a73e8', label: 'Moderate' },
-  P4: { bg: '#188038', label: 'Routine' },
+  P4: { bg: EMERALD, label: 'Routine' },
 };
 
 function fmt(ts) {
@@ -22,7 +27,7 @@ function fmt(ts) {
 function Section({ n, title, children }) {
   return (
   <div className="pdf-block" style={{ marginTop: 14 }}>
-    <div style={{ background: '#f1f3f4', borderLeft: '4px solid #188038', padding: '5px 10px', fontWeight: 700, fontSize: 12.5, color: '#111', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+    <div style={{ background: '#fff4e6', borderLeft: `4px solid ${SAFFRON}`, padding: '5px 10px', fontWeight: 700, fontSize: 12.5, color: '#111', textTransform: 'uppercase', letterSpacing: 0.4 }}>
       {n}. {title}
     </div>
     <div style={{ padding: '8px 4px', fontSize: 12.5, color: '#1a1a1a', lineHeight: 1.5 }}>{children}</div>
@@ -90,9 +95,10 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
   const p = patient;
   const clinical = normalizeClinicalDocs(p.documents);
   const tag = PRIORITY_TAG[p.triageLevel] || PRIORITY_TAG.P3;
-  const agni = p.agni || p.ayurvedicNotes?.agni || '—';
-  const koshtha = p.koshtha || p.ayurvedicNotes?.koshtha || '—';
-  const ama = /manda|vishama/i.test(agni) ? 'Ama present (Sama condition suggested)' : 'Nirama (no significant Ama markers)';
+  const pillars = assessmentOf(p);
+  const aiPillars = aiAssessmentOf(p);
+  const agni = pillars.agni || '—';
+  const koshtha = pillars.koshtha || '—';
   const consult = p.consultation || null;
   const rx = filledMedications(consult?.prescription);
 
@@ -164,17 +170,21 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           margin: exporting ? 0 : '8px 0',
         }}
       >
-        {/* Official header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #188038', paddingBottom: 10 }}>
+        {/* Official header — saffron → emerald bar, saffron rule */}
+        <div style={{ height: 6, borderRadius: 3, background: `linear-gradient(90deg, ${SAFFRON} 0%, ${SAFFRON} 45%, ${EMERALD} 55%, ${EMERALD} 100%)`, marginBottom: 10 }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `2px solid ${SAFFRON}`, paddingBottom: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 46, height: 46, borderRadius: 10, background: '#188038', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 22 }}>आ</div>
+            <div style={{ width: 46, height: 46, borderRadius: 10, background: SAFFRON, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 22 }}>आ</div>
             <div>
               <div style={{ fontSize: 16, fontWeight: 800, color: '#111' }}>AyushBridge — Clinical Intake Summary</div>
               <div style={{ fontSize: 11, color: '#555' }}>Ministry of AYUSH · Government of India · Combined Total Case History Sheet</div>
+              <div style={{ marginTop: 3, display: 'inline-block', background: EMERALD, color: '#fff', borderRadius: 12, padding: '1px 9px', fontSize: 10, fontWeight: 700 }}>
+                AYUSH Triage · Dosha · Agni · Koshtha
+              </div>
             </div>
           </div>
           <div style={{ textAlign: 'right', fontSize: 11, color: '#333' }}>
-            <div><strong>OPD Token:</strong> {token}</div>
+            <div><strong>OPD Token:</strong> <span style={{ color: '#c2410c', fontWeight: 800 }}>{token}</span></div>
             <div><strong>Generated:</strong> {fmt(p.timestamp)}</div>
             <div><strong>Intake:</strong> {p.triageSource || 'Voice Kiosk'}</div>
             <div style={{ marginTop: 4, display: 'inline-block', background: tag.bg, color: '#fff', padding: '2px 10px', borderRadius: 20, fontWeight: 700 }}>
@@ -212,20 +222,44 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           <PrintDiseaseTimeline events={p.diseaseTimeline} />
         </Section>
 
-        <Section n={4} title="AYUSH Rogi Pariksha Matrix">
-          <Row label="Dosha Imbalance" value={p.dosha} />
-          <Row label="Agni (Digestive Fire)" value={agni} />
-          <Row label="Koshtha (Bowel)" value={koshtha} />
-          <Row label="Ama Markers" value={ama} />
-          <Row label="Nidra & Manas (Sleep/Stress)" value={(p.sleep_stress && p.sleep_stress !== 'N/A') ? p.sleep_stress : '—'} />
-          <Row label="Bala & Lifestyle (Energy)" value={(p.energy_lifestyle && p.energy_lifestyle !== 'N/A') ? p.energy_lifestyle : '—'} />
+        <Section n={4} title="AYUSH Rogi Pariksha — 3 Core Pillars">
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 11.5 }}>
+            <thead>
+              <tr>
+                {AYUSH_PILLARS.map(({ key, label, hi }) => (
+                  <th key={key} style={{ textAlign: 'left', padding: '6px 8px', border: `1px solid ${SAFFRON}`, background: '#fff4e6', color: '#9a3412', fontWeight: 800 }}>
+                    {label} · {hi}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                {AYUSH_PILLARS.map(({ key }) => {
+                  const edited = pillars[key] && pillars[key] !== aiPillars[key];
+                  return (
+                    <td key={key} style={{ padding: '8px', border: `1px solid ${SAFFRON}`, verticalAlign: 'top' }}>
+                      <span style={{ display: 'inline-block', background: EMERALD, color: '#fff', borderRadius: 14, padding: '3px 10px', fontWeight: 700, fontSize: 11.5 }}>
+                        {pillars[key] || 'Not assessed'}
+                      </span>
+                      <div style={{ marginTop: 5, fontSize: 10, color: edited ? '#c2410c' : '#666', fontWeight: edited ? 700 : 400 }}>
+                        {edited
+                          ? `✎ Edited by Doctor (AI: ${aiPillars[key] || 'not assessed'})`
+                          : (consult?.signedAt ? '✓ Verified by physician' : 'AI triage value')}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            </tbody>
+          </table>
         </Section>
 
         <Section n={5} title="Past Medical Records (Scanned at Kiosk) — Documents">
           {clinical.reports.length ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {clinical.reports.map((r, i) => (
-                <div key={r.id || i} style={{ border: '1px solid #ccc', borderLeft: '3px solid #188038', borderRadius: 5, padding: '5px 10px', fontSize: 11.5, background: '#fafafa' }}>
+                <div key={r.id || i} style={{ border: '1px solid #ccc', borderLeft: '3px solid #059669', borderRadius: 5, padding: '5px 10px', fontSize: 11.5, background: '#fafafa' }}>
                   <div style={{ fontWeight: 700 }}>
                     {docTypeLabel(r.documentType)} — {r.title || r.fileName}
                   </div>
@@ -246,7 +280,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           {clinical.medicines.length ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
               {clinical.medicines.map((m, i) => (
-                <span key={i} style={{ border: '1px solid #188038', borderRadius: 14, padding: '3px 10px', fontSize: 11.5, background: '#f2f8f3', color: '#111' }}>
+                <span key={i} style={{ border: '1px solid #059669', borderRadius: 14, padding: '3px 10px', fontSize: 11.5, background: '#ecfdf5', color: '#111' }}>
                   <strong>{m.name}</strong>
                   {m.dosage ? ` · ${m.dosage}` : ''}
                   {m.frequency ? ` · ${m.frequency}` : ''}
@@ -342,12 +376,12 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
             {rx.length ? (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
                 <thead>
-                  <tr style={{ background: '#eef7f0' }}>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #bcd9c3', width: '28%' }}>Medicine</th>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #bcd9c3', width: '13%' }}>Form</th>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #bcd9c3', width: '20%' }}>Dose / Freq</th>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #bcd9c3', width: '25%' }}>Timing</th>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #bcd9c3', width: '14%' }}>Duration</th>
+                  <tr style={{ background: '#ecfdf5' }}>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '28%' }}>Medicine</th>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '13%' }}>Form</th>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '20%' }}>Dose / Freq</th>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '25%' }}>Timing</th>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '14%' }}>Duration</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -372,7 +406,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
               Physician Clinical Advice &amp; Dietary Guidelines (Pathya–Apathya)
             </div>
             {consult?.advice ? (
-              <div style={{ background: '#f7fbf8', borderLeft: '3px solid #188038', padding: '8px 10px', fontSize: 12, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+              <div style={{ background: '#ecfdf5', borderLeft: '3px solid #059669', padding: '8px 10px', fontSize: 12, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
                 {consult.advice}
               </div>
             ) : (
@@ -388,7 +422,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
             <div style={{ fontSize: 11, color: '#666', maxWidth: '52%' }}>
               Generated by AYUSH Swasthya Sahayak AI · For physician verification &amp; dual sign-off.
               {consult?.signedAt && (
-                <div style={{ marginTop: 4, color: '#188038', fontWeight: 700 }}>
+                <div style={{ marginTop: 4, color: EMERALD, fontWeight: 700 }}>
                   ✓ Prescription digitally finalised on {fmt(consult.signedAt)}
                 </div>
               )}

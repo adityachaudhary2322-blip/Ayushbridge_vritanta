@@ -56,7 +56,7 @@ const GENDERS = [
 
 const PRIORITY_CONFIG = {
   P1: { label: 'Critical', ring: 'bg-red-500 text-white',        note: { en: 'Emergency — you will be seen immediately', hi: 'आपातकाल — आपको तुरंत देखा जाएगा' } },
-  P2: { label: 'Urgent',   ring: 'bg-amber-400 text-slate-900',  note: { en: 'Urgent — you will be seen very soon',      hi: 'अत्यावश्यक — आपको जल्दी देखा जाएगा' } },
+  P2: { label: 'Urgent',   ring: 'bg-orange-500 text-white',  note: { en: 'Urgent — you will be seen very soon',      hi: 'अत्यावश्यक — आपको जल्दी देखा जाएगा' } },
   P3: { label: 'Moderate', ring: 'bg-emerald-400 text-slate-900', note: { en: 'Standard consultation — please wait',     hi: 'सामान्य परामर्श — कृपया प्रतीक्षा करें' } },
   P4: { label: 'Routine',  ring: 'bg-sky-400 text-slate-900',    note: { en: 'Routine visit — please wait',              hi: 'नियमित परामर्श — कृपया प्रतीक्षा करें' } },
 };
@@ -396,12 +396,12 @@ export default function SignBridgeKiosk() {
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
 
       {/* ── Header ── */}
-      <header className="w-full px-4 sm:px-6 h-16 flex items-center justify-between border-b-2 border-slate-700 bg-slate-950">
+      <header className="w-full px-4 sm:px-6 h-16 flex items-center justify-between border-b-2 border-orange-500 bg-slate-950">
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => navigate('/')} className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center shrink-0" aria-label="Home">
             <span className="material-symbols-outlined text-[22px]">home</span>
           </button>
-          <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-900 flex items-center justify-center text-[20px] shrink-0">🤟</div>
+          <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center text-[20px] shrink-0">🤟</div>
           <div className="leading-tight min-w-0">
             <p className="text-base sm:text-lg font-bold truncate">SignBridge · Divyang Jan</p>
             <p className="text-xs text-emerald-300 truncate">सांकेतिक भाषा त्रिआज · Beta</p>
@@ -417,11 +417,11 @@ export default function SignBridgeKiosk() {
           </button>
           <button
             onClick={() => setDrawerOpen(true)}
-            className="px-3 sm:px-4 py-2.5 rounded-xl bg-amber-400 text-slate-900 hover:bg-amber-300 text-base font-bold flex items-center gap-1.5"
+            className="px-3 sm:px-4 py-2.5 rounded-xl bg-orange-500 text-white hover:bg-orange-600 text-base font-bold flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-[20px]">qr_code_2</span>
             <span className="hidden sm:inline">{t('Reports', 'रिपोर्ट')}</span>
-            {reports.length > 0 && <span className="px-1.5 rounded-full bg-slate-900 text-amber-300 text-sm">{reports.length}</span>}
+            {reports.length > 0 && <span className="px-1.5 rounded-full bg-slate-900 text-orange-400 text-sm">{reports.length}</span>}
           </button>
         </div>
       </header>
@@ -435,11 +435,11 @@ export default function SignBridgeKiosk() {
             return (
               <li key={s} className="flex-1 flex items-center gap-1.5 sm:gap-2 min-w-0">
                 <span className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${
-                  done ? 'bg-emerald-500 text-slate-900' : active ? 'bg-amber-400 text-slate-900 ring-4 ring-amber-400/30' : 'bg-slate-700 text-slate-400'
+                  done ? 'bg-emerald-600 text-white' : active ? 'bg-orange-500 text-white ring-4 ring-orange-500/30' : 'bg-slate-700 text-slate-400'
                 }`}>
                   {done ? '✓' : i + 1}
                 </span>
-                <span className={`text-xs sm:text-sm font-bold truncate ${active ? 'text-amber-300' : done ? 'text-emerald-300' : 'text-slate-500'}`}>
+                <span className={`text-xs sm:text-sm font-bold truncate ${active ? 'text-orange-400' : done ? 'text-emerald-300' : 'text-slate-500'}`}>
                   {t(STEP_LABELS[s].en, STEP_LABELS[s].hi)}
                 </span>
                 {i < STAGES.length - 1 && <span className={`hidden sm:block flex-1 h-1 rounded-full ${done ? 'bg-emerald-500' : 'bg-slate-700'}`} />}
@@ -494,8 +494,8 @@ export default function SignBridgeKiosk() {
                     </p>
                   </div>
                   <span className={`rounded-lg px-2 py-1 text-[11px] font-bold ${
-                    visionStatus === 'ready' ? 'bg-emerald-500 text-slate-900'
-                      : visionStatus === 'loading' ? 'bg-amber-400 text-slate-900' : 'bg-red-500 text-white'
+                    visionStatus === 'ready' ? 'bg-emerald-600 text-white'
+                      : visionStatus === 'loading' ? 'bg-orange-500 text-white' : 'bg-red-500 text-white'
                   }`}>
                     {visionStatus === 'ready' ? t('READY', 'तैयार') : visionStatus === 'loading' ? t('LOADING', 'लोड हो रहा') : t('OFFLINE', 'बंद')}
                   </span>
@@ -508,11 +508,11 @@ export default function SignBridgeKiosk() {
               <div className="px-3 py-3 bg-slate-950 border-t-2 border-slate-700">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{t('Hold steady', 'स्थिर रखें')}</span>
-                  <span className={`text-sm font-black ${stability > 0.85 ? 'text-emerald-400' : 'text-amber-300'}`}>{Math.round(stability * 100)}%</span>
+                  <span className={`text-sm font-black ${stability > 0.85 ? 'text-emerald-400' : 'text-orange-400'}`}>{Math.round(stability * 100)}%</span>
                 </div>
                 <div className="h-4 w-full rounded-full bg-slate-800 overflow-hidden border border-slate-700">
                   <div
-                    className={`h-full rounded-full transition-all duration-150 ${stability > 0.85 ? 'bg-emerald-400' : 'bg-amber-400'}`}
+                    className={`h-full rounded-full transition-all duration-150 ${stability > 0.85 ? 'bg-emerald-400' : 'bg-orange-500'}`}
                     style={{ width: `${Math.round(stability * 100)}%` }}
                   />
                 </div>
@@ -522,7 +522,7 @@ export default function SignBridgeKiosk() {
             <button
               onClick={() => (cameraOn ? stopCamera() : startCamera())}
               className={`w-full px-4 py-4 text-lg font-black flex items-center justify-center gap-2 ${
-                cameraOn ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900'
+                cameraOn ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
               }`}
             >
               <span className="material-symbols-outlined text-[24px]">{cameraOn ? 'videocam_off' : 'videocam'}</span>
@@ -534,7 +534,7 @@ export default function SignBridgeKiosk() {
             <p className="rounded-xl bg-red-500/20 border-2 border-red-500/50 text-red-100 px-4 py-3 text-base font-semibold">{cameraError}</p>
           )}
           {visionStatus === 'failed' && (
-            <p className="rounded-xl bg-amber-400/20 border-2 border-amber-400/50 text-amber-100 px-4 py-3 text-base font-semibold">
+            <p className="rounded-xl bg-orange-500/20 border-2 border-orange-500/60 text-orange-100 px-4 py-3 text-base font-semibold">
               {t('Gesture model unavailable', 'जेस्चर मॉडल अनुपलब्ध')} ({visionError}). {t('Please tap the cards.', 'कृपया कार्ड दबाएँ।')}
             </p>
           )}
@@ -560,7 +560,7 @@ export default function SignBridgeKiosk() {
                       onClick={() => answerAndAdvance(setComplaint, c.id, 'nidra', 1000)}
                       className={`relative rounded-2xl p-4 text-left border-4 transition-all ${
                         selected ? 'border-emerald-400 bg-emerald-500/20'
-                          : detecting ? 'border-amber-400 bg-amber-400/15'
+                          : detecting ? 'border-orange-500 bg-orange-500/15'
                           : 'border-slate-700 bg-slate-800 hover:border-slate-500'
                       }`}
                     >
@@ -647,7 +647,7 @@ export default function SignBridgeKiosk() {
                 {/* Hands-free fast path — no keyboard, no mouse */}
                 <button
                   onClick={quickGuestToken}
-                  className="w-full px-6 py-6 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-900 text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
+                  className="w-full px-6 py-6 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
                 >
                   <span>⚡ त्वरित टोकन / Quick Guest Token (Divyang Jan)</span>
                   <span className="text-base font-bold opacity-80">
@@ -735,13 +735,13 @@ export default function SignBridgeKiosk() {
                 </label>
 
                 {/* Touchless document upload */}
-                <div className="rounded-2xl border-4 border-amber-400/40 bg-amber-400/10 p-4 flex flex-col sm:flex-row items-center gap-4">
+                <div className="rounded-2xl border-4 border-orange-500/50 bg-orange-500/10 p-4 flex flex-col sm:flex-row items-center gap-4">
                   <div className="bg-white p-2 rounded-xl shrink-0">
                     <QRCodeSVG value={mobileUrl} size={116} level="M" />
                   </div>
                   <div className="flex-1 text-center sm:text-left">
                     <p className="text-lg font-black">{t('Have past prescriptions?', 'पुरानी पर्ची है?')}</p>
-                    <p className="text-base font-bold text-amber-200">{t('Scan to attach', 'स्कैन करके जोड़ें')} · पुरानी पर्ची स्कैन करें</p>
+                    <p className="text-base font-bold text-orange-200">{t('Scan to attach', 'स्कैन करके जोड़ें')} · पुरानी पर्ची स्कैन करें</p>
                     <p className="mt-1 text-sm font-semibold text-slate-300">
                       {reports.length
                         ? `✓ ${reports.length} ${t('report(s) attached', 'रिपोर्ट जुड़ी')}`
@@ -753,7 +753,7 @@ export default function SignBridgeKiosk() {
                   <button
                     onClick={goNext}
                     className={`px-5 py-3 rounded-xl text-base font-black shrink-0 ${
-                      reports.length ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-900' : 'bg-slate-800 hover:bg-slate-700'
+                      reports.length ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-slate-800 hover:bg-slate-700'
                     }`}
                   >
                     {reports.length ? t('Continue Consultation', 'परामर्श जारी रखें') : t('Skip', 'आगे बढ़ें')} ➔
@@ -766,7 +766,7 @@ export default function SignBridgeKiosk() {
 
                 <NextButton disabled={!form.name.trim()} onClick={goNext} lang={lang} />
                 {!form.name.trim() && (
-                  <p className="text-center text-base font-bold text-amber-300">{t('Please type your name to continue', 'आगे बढ़ने के लिए अपना नाम लिखें')}</p>
+                  <p className="text-center text-base font-bold text-orange-400">{t('Please type your name to continue', 'आगे बढ़ने के लिए अपना नाम लिखें')}</p>
                 )}
               </div>
             </StagePanel>
@@ -800,7 +800,7 @@ export default function SignBridgeKiosk() {
                 <button
                   onClick={submit}
                   disabled={submitting}
-                  className="w-full px-6 py-7 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-900 text-2xl sm:text-3xl font-black flex items-center justify-center gap-3 shadow-xl"
+                  className="w-full px-6 py-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-2xl sm:text-3xl font-black flex items-center justify-center gap-3 shadow-xl"
                 >
                   {submitting ? (
                     <>
@@ -865,7 +865,7 @@ export default function SignBridgeKiosk() {
 
                 <button
                   onClick={() => { setDrawerOpen(false); goNext(); }}
-                  className="w-full px-6 py-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
+                  className="w-full px-6 py-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
                 >
                   <span>➔ {t('Next: Continue Consultation', 'परामर्श जारी रखें')}</span>
                   <span className="text-base font-bold opacity-80">
@@ -880,7 +880,7 @@ export default function SignBridgeKiosk() {
                 <p className="text-sm font-black uppercase tracking-wider text-slate-400">{t('Attached', 'जुड़ी हुई')}</p>
                 {reports.map((r, i) => (
                   <div key={r.id || i} className="rounded-xl bg-slate-800 border-2 border-slate-700 p-3">
-                    <p className="text-sm font-black text-amber-300">{DOC_BADGE[r.documentType] || DOC_BADGE.MIXED}</p>
+                    <p className="text-sm font-black text-orange-400">{DOC_BADGE[r.documentType] || DOC_BADGE.MIXED}</p>
                     <p className="text-base font-bold truncate">{r.title || r.fileName}</p>
                     <p className="text-sm font-semibold text-slate-400">
                       💊 {r.medicines?.length || 0} · 🧪 {r.labTests?.length || 0}
@@ -890,7 +890,7 @@ export default function SignBridgeKiosk() {
               </div>
             )}
 
-            <button onClick={() => setDrawerOpen(false)} className="mt-auto w-full px-5 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xl font-black">
+            <button onClick={() => setDrawerOpen(false)} className="mt-auto w-full px-5 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-black">
               {t('Done', 'हो गया')}
             </button>
           </aside>
@@ -906,7 +906,7 @@ function StagePanel({ icon, en, hi, help, children, onBack, backLabel }) {
   return (
     <div className="flex flex-col gap-4">
       {/* High-contrast question banner */}
-      <div className="rounded-2xl bg-emerald-500 text-slate-900 px-5 py-5 flex items-start gap-4">
+      <div className="rounded-2xl bg-emerald-600 text-white px-5 py-5 flex items-start gap-4">
         <span className="text-[44px] leading-none shrink-0">{icon}</span>
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-black leading-tight">{en}</h1>
@@ -941,7 +941,7 @@ function BinaryChoice({ options, value, liveShape, lang, onPick }) {
             className={`relative rounded-2xl p-6 border-4 text-left transition-all ${
               selected
                 ? 'border-emerald-400 bg-emerald-500/25'
-                : detecting ? 'border-amber-300 bg-amber-300/10'
+                : detecting ? 'border-orange-400 bg-orange-400/10'
                 : 'border-slate-700 bg-slate-800 hover:border-slate-500'
             }`}
           >
@@ -995,7 +995,7 @@ function NextButton({ disabled, onClick, lang }) {
       onClick={onClick}
       disabled={disabled}
       className={`w-full px-6 py-6 rounded-2xl text-2xl sm:text-3xl font-black flex items-center justify-center gap-3 transition-all ${
-        disabled ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900 shadow-xl'
+        disabled ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl'
       }`}
     >
       {lang === 'hi' ? 'आगे बढ़ें' : 'Next'} ➔
@@ -1012,7 +1012,7 @@ function SummaryRow({ icon, label, value, tone, onClick }) {
       <span className="text-[36px] leading-none shrink-0">{icon}</span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-black uppercase tracking-wider text-slate-400">{label}</p>
-        <p className={`text-xl font-black leading-tight truncate ${tone === 'bad' ? 'text-amber-300' : 'text-slate-100'}`}>{value}</p>
+        <p className={`text-xl font-black leading-tight truncate ${tone === 'bad' ? 'text-orange-400' : 'text-slate-100'}`}>{value}</p>
       </div>
       <span className="material-symbols-outlined text-[24px] text-slate-400 shrink-0">edit</span>
     </button>
@@ -1026,7 +1026,7 @@ function SuccessScreen({ result, t, countdown, complaintObj, sleepObj, agniObj, 
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center px-4 py-8 gap-6">
-      <div className="w-24 h-24 rounded-full bg-emerald-500 text-slate-900 flex items-center justify-center text-[52px] font-black">✓</div>
+      <div className="w-24 h-24 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[52px] font-black">✓</div>
 
       <div className="text-center">
         <h1 className="text-3xl sm:text-4xl font-black">{t('Sent to the Doctor', 'डॉक्टर को भेज दिया गया')}</h1>
@@ -1034,9 +1034,9 @@ function SuccessScreen({ result, t, countdown, complaintObj, sleepObj, agniObj, 
       </div>
 
       {/* Token */}
-      <div className="w-full max-w-lg rounded-3xl bg-slate-800 border-4 border-emerald-400 p-6 flex flex-col items-center gap-2">
+      <div className="w-full max-w-lg rounded-3xl bg-slate-900 border-4 border-orange-500 p-6 flex flex-col items-center gap-2">
         <p className="text-base font-black uppercase tracking-widest text-slate-400">{t('Your OPD Token', 'आपका ओपीडी टोकन')}</p>
-        <p className="text-4xl sm:text-5xl font-black text-emerald-300 tracking-wide">{token}</p>
+        <p className="text-4xl sm:text-5xl font-black text-orange-400 tracking-wide">{token}</p>
         <p className="text-xl font-bold">{result.name}</p>
       </div>
 
@@ -1066,7 +1066,7 @@ function SuccessScreen({ result, t, countdown, complaintObj, sleepObj, agniObj, 
           {t(`Returning to the home screen in ${countdown}s`, `${countdown} सेकंड में होम स्क्रीन पर वापस`)}
         </p>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button onClick={onHome} className="flex-1 px-6 py-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xl font-black">
+          <button onClick={onHome} className="flex-1 px-6 py-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-black">
             🏠 {t('Home Now', 'अभी होम जाएँ')}
           </button>
           <button onClick={onRestart} className="flex-1 px-6 py-5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-xl font-black">

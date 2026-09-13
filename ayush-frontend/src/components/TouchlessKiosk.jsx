@@ -412,9 +412,10 @@ export default function TouchlessKiosk() {
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-surface to-surface-container-low">
 
       {/* Top bar */}
-      <header className="w-full px-4 sm:px-8 h-16 flex items-center justify-between border-b border-surface-container-high bg-surface-container-lowest/80 backdrop-blur-sm">
+      <div className="h-1 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-600" />
+      <header className="w-full px-4 sm:px-8 h-16 flex items-center justify-between border-b-2 border-orange-500 bg-surface-container-lowest/90 backdrop-blur-sm">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
+          <div className="w-9 h-9 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-sm">
             <span className="material-symbols-outlined text-[20px]">spa</span>
           </div>
           <div>
@@ -579,7 +580,7 @@ export default function TouchlessKiosk() {
 
               {/* Controls */}
               {!started ? (
-                <button onClick={begin} className="px-8 sm:px-10 py-5 rounded-full bg-primary text-on-primary font-title-md text-title-md sm:font-headline-sm sm:text-headline-sm shadow-xl hover:bg-primary-container transition-all flex items-center gap-3 animate-pulse text-center">
+                <button onClick={begin} className="px-8 sm:px-10 py-5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-title-md text-title-md sm:font-headline-sm sm:text-headline-sm shadow-xl hover:bg-primary-container transition-all flex items-center gap-3 animate-pulse text-center">
                   <span className="material-symbols-outlined text-[32px]">mic</span>
                   {lang === 'hi'
                     ? '🎙️ परामर्श शुरू करें — एक बार टैप करें'
@@ -602,8 +603,8 @@ export default function TouchlessKiosk() {
                 <div className="flex items-center gap-2 flex-wrap justify-center">
                   {STAGES.map((s, i) => (
                     <div key={s} className="flex flex-col items-center gap-1">
-                      <div className={`h-2.5 rounded-full transition-all ${i < stageIdx ? 'w-8 bg-primary' : i === stageIdx ? 'w-8 bg-primary/60' : 'w-2.5 bg-surface-container-high'}`} />
-                      <span className={`font-label-sm text-label-sm ${i === stageIdx ? 'text-primary font-semibold' : 'text-on-surface-variant'}`}>{STAGE_LABEL[s][lang]}</span>
+                      <div className={`h-2.5 rounded-full transition-all ${i < stageIdx ? 'w-8 bg-emerald-600' : i === stageIdx ? 'w-8 bg-orange-500' : 'w-2.5 bg-surface-container-high'}`} />
+                      <span className={`font-label-sm text-label-sm ${i === stageIdx ? 'text-orange-600 font-semibold' : 'text-on-surface-variant'}`}>{STAGE_LABEL[s][lang]}</span>
                     </div>
                   ))}
                 </div>
@@ -803,8 +804,8 @@ function TokenCard({ result, lang, onReset, onDoctor }) {
               <div className="font-title-md text-title-md opacity-90">{result.triageLabel || cfg.label}</div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="font-label-sm text-label-sm opacity-80 uppercase tracking-wider">Token</div>
+          <div className="text-right px-3 py-1.5 rounded-xl bg-orange-500 ring-2 ring-white/70 shadow-md">
+            <div className="font-label-sm text-label-sm opacity-90 uppercase tracking-wider">Token</div>
             <div className="font-headline-sm text-headline-sm font-bold tracking-widest">{token}</div>
           </div>
         </div>
@@ -833,7 +834,7 @@ function TokenCard({ result, lang, onReset, onDoctor }) {
         </div>
 
         <div className="px-6 pb-6 flex flex-col sm:flex-row gap-3">
-          <button onClick={onReset} className="flex-1 px-5 py-3.5 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-md hover:bg-primary-container transition-all flex items-center justify-center gap-2">
+          <button onClick={onReset} className="flex-1 px-5 py-3.5 rounded-xl bg-emerald-600 text-white font-label-lg text-label-lg shadow-md hover:bg-emerald-700 transition-all flex items-center justify-center gap-2">
             <span className="material-symbols-outlined text-[22px]">person_add</span>
             {lang === 'hi' ? 'अगला मरीज़' : 'Next Patient'}
           </button>

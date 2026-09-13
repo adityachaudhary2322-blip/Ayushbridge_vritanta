@@ -43,6 +43,10 @@ export default function DiagnosisRxPanel({ patient, onSaved }) {
       advice: form.advice,
       followUpDate: form.followUpDate,
       status: 'COMPLETED',
+      // The physician-verified AYUSH pillars from the assessment card (read at click time).
+      dosha: patient?.dosha,
+      agni: patient?.agni,
+      koshtha: patient?.koshtha,
     };
     try {
       const res = await fetch(`${API}/consultation/save`, {
@@ -52,7 +56,7 @@ export default function DiagnosisRxPanel({ patient, onSaved }) {
       });
       const data = await res.json();
       if (!res.ok || data?.success === false) throw new Error(data?.error || 'Save failed');
-      onSaved?.(data.consultation || { ...payload, signedAt: new Date().toISOString() });
+      onSaved?.(data.consultation || { ...payload, signedAt: new Date().toISOString() }, data.record);
       setSaved(true);
     } catch (err) {
       // A demo laptop losing the backend must not lose the physician's typing —
@@ -181,7 +185,7 @@ export default function DiagnosisRxPanel({ patient, onSaved }) {
         {/* 3 — Persistence */}
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <button onClick={handleSave} disabled={saving} type="button"
-            className="px-5 py-2.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-lg text-label-lg shadow-sm transition-all flex items-center gap-2 disabled:opacity-70">
+            className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-label-lg text-label-lg shadow-sm transition-all flex items-center gap-2 disabled:opacity-70">
             <span className={`material-symbols-outlined text-[19px] ${saving ? 'animate-spin' : ''}`}>
               {saving ? 'progress_activity' : 'save'}
             </span>

@@ -6,10 +6,25 @@ import CaseReportModal from './CaseReportModal';
 import CaseHistorySheet from './CaseHistorySheet';
 import DiagnosisRxPanel from './DiagnosisRxPanel';
 import DiseaseTimeline from './DiseaseTimeline';
+import AyushAssessmentCard from './AyushAssessmentCard';
+import { assessmentOf, aiAssessmentOf } from '../utils/ayushPillars';
 import { normalizeClinicalDocs, flagStyle, docTypeLabel, docTime } from '../utils/clinicalDocs';
 import { patientToken } from '../utils/consultation';
 
 const API = '/api';
+
+// Compact read-only 3-pillar summary for the stream table rows.
+function PillarStack({ dosha, agni, koshtha }) {
+  return (
+    <div className="flex flex-col gap-1">
+      {[['Dosha', dosha], ['Agni', agni], ['Koshtha', koshtha]].map(([k, v]) => (
+        <span key={k} className="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm w-fit">
+          <span className="text-orange-700">{k}:</span> {v}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 export default function DoctorDashboard() {
   const navigate = useNavigate();
@@ -30,6 +45,7 @@ export default function DoctorDashboard() {
   const [uploadingId, setUploadingId] = useState(null);  // patient card currently attaching a document
   const [deletingId, setDeletingId] = useState(null);
   const [cardError, setCardError] = useState({});        // id → last upload/delete error
+  const [assessments, setAssessments] = useState({});    // id → physician-edited { dosha, agni, koshtha }
 
   useEffect(() => {
     fetchPatients();
@@ -86,7 +102,15 @@ export default function DoctorDashboard() {
   };
 
   // A just-signed Rx must reach the A4 sheet before the 10s queue poll returns it.
-  const withConsult = (p) => (p ? { ...p, consultation: consults[p.id] || p.consultation } : p);
+  // The physician's on-screen pillar edits win over the stored AI read, so the Rx
+  // save and the A4 sheet both carry exactly what the doctor sees.
+  const assessmentFor = (p) => assessments[p.id] || assessmentOf(p);
+  const withConsult = (p) => (p ? {
+    ...p,
+    ...assessmentFor(p),
+    aiAssessment: aiAssessmentOf(p),
+    consultation: consults[p.id] || p.consultation,
+  } : p);
 
   const PRIORITY_BADGE = {
     P1: 'bg-error-container text-on-error-container',
@@ -130,14 +154,15 @@ export default function DoctorDashboard() {
     <>
       <div className="flex flex-col w-full">
         {/* Physician Subheader */}
-        <section className="w-full px-4 lg:px-margin-desktop py-6 bg-surface-container-low">
+        <div className="h-1 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-600" />
+        <section className="w-full px-4 lg:px-margin-desktop py-6 bg-surface-container-low border-b-2 border-orange-500">
           <div className="max-w-7xl mx-auto flex flex-col xl:flex-row xl:items-center justify-between gap-5">
             <div className="flex flex-wrap items-center gap-4">
               <div className="relative">
-                <div className="w-14 h-14 rounded-2xl bg-surface-container-lowest shadow-sm flex items-center justify-center text-primary overflow-hidden">
-                  <span className="material-symbols-outlined text-primary text-[32px]">health_and_safety</span>
+                <div className="w-14 h-14 rounded-2xl bg-orange-500 shadow-sm flex items-center justify-center text-white overflow-hidden">
+                  <span className="material-symbols-outlined text-white text-[32px]">health_and_safety</span>
                 </div>
-                <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-primary rounded-full ring-2 ring-surface-container-lowest" title="Physician Active & Verified"></span>
+                <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-600 rounded-full ring-2 ring-surface-container-lowest" title="Physician Active & Verified"></span>
               </div>
               <div className="flex flex-col">
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -277,8 +302,8 @@ export default function DoctorDashboard() {
           {patients.length > 0 && (
             <section className="flex flex-col gap-4">
               <div className="flex items-center gap-2 px-1">
-                <span className="font-headline-sm text-headline-sm text-on-surface">Live Triage Queue</span>
-                <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-primary font-label-sm text-label-sm">{patients.length} OPD Record{patients.length > 1 ? 's' : ''}</span>
+                <span className="font-headline-sm text-headline-sm text-on-surface border-l-4 border-orange-500 pl-2.5">Live Triage Queue</span>
+                <span className="px-2 py-0.5 rounded-full bg-orange-500 text-white font-label-sm text-label-sm">{patients.length} OPD Record{patients.length > 1 ? 's' : ''}</span>
                 <span className="inline-flex items-center gap-1 font-label-sm text-label-sm text-tertiary ml-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span> auto-refresh 10s
                 </span>
@@ -293,7 +318,7 @@ export default function DoctorDashboard() {
                   const rxOpen = openRxId === p.id;
                   const signed = consults[p.id] || p.consultation;
                   return (
-                    <div key={p.id} className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden ring-1 ring-surface-container-high">
+                    <div key={p.id} className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden ring-1 ring-surface-container-high border-t-4 border-orange-500">
                       {/* Card header: priority + demographics */}
                       <div className="p-4 flex items-start justify-between gap-3 border-b border-surface-container-high">
                         <div className="flex flex-col gap-1.5">
@@ -305,7 +330,7 @@ export default function DoctorDashboard() {
                           <span className="font-body-sm text-body-sm text-on-surface-variant">
                             {p.age !== 'N/A' ? `${p.age}` : '—'}{p.gender !== 'N/A' ? ` • ${p.gender}` : ''}{p.phone !== 'N/A' ? ` • 📱 ${p.phone}` : ''}
                           </span>
-                          <span className="font-label-sm text-label-sm text-on-surface-variant">Token: <strong className="text-on-surface">{patientToken(p)}</strong></span>
+                          <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-lg border border-orange-500 text-orange-700 bg-orange-50 font-label-sm text-label-sm">Token: <strong className="ml-1">{patientToken(p)}</strong></span>
                         </div>
                         {hasDocs && (
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary font-label-sm text-label-sm shrink-0">
@@ -321,19 +346,13 @@ export default function DoctorDashboard() {
                           <p className="font-body-md text-body-md text-on-surface font-medium">{p.chiefComplaint}</p>
                         </div>
 
-                        {/* Ayurvedic assessment chips */}
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { l: 'Dosha', v: p.dosha, icon: 'balance' },
-                            { l: 'Agni', v: p.agni || p.ayurvedicNotes?.agni, icon: 'local_fire_department' },
-                            { l: 'Koshtha', v: p.koshtha || p.ayurvedicNotes?.koshtha, icon: 'gastroenterology' },
-                          ].filter(x => x.v).map(x => (
-                            <span key={x.l} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-low text-on-surface font-label-sm text-label-sm">
-                              <span className="material-symbols-outlined text-[14px] text-primary">{x.icon}</span>
-                              <span className="text-on-surface-variant">{x.l}:</span> {x.v}
-                            </span>
-                          ))}
-                        </div>
+                        {/* AYUSH triage stream — the 3 core pillars, editable by the physician */}
+                        <AyushAssessmentCard
+                          idPrefix={p.id}
+                          value={assessmentFor(p)}
+                          aiValue={aiAssessmentOf(p)}
+                          onChange={(next) => setAssessments(prev => ({ ...prev, [p.id]: next }))}
+                        />
 
                         {p.redFlags && p.redFlags !== 'None' && (
                           <div className="inline-flex items-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-error-container/40 text-on-error-container font-label-sm text-label-sm w-fit">
@@ -359,23 +378,11 @@ export default function DoctorDashboard() {
                           </div>
                         )}
 
-                        {/* Leading AYUSH history — Nidra & Manas, Bala, Purva Vyadhi */}
-                        {[
-                          { l: 'Nidra & Manas', v: p.sleep_stress, icon: 'bedtime' },
-                          { l: 'Bala & Lifestyle', v: p.energy_lifestyle, icon: 'bolt' },
-                          { l: 'Chronic History', v: p.chronic_history, icon: 'history' },
-                        ].some(x => x.v && x.v !== 'N/A') && (
-                          <div className="flex flex-col gap-1.5 rounded-xl bg-surface-container-low p-3">
-                            {[
-                              { l: 'Nidra & Manas (Sleep/Stress)', v: p.sleep_stress, icon: 'bedtime' },
-                              { l: 'Bala & Lifestyle (Energy)', v: p.energy_lifestyle, icon: 'bolt' },
-                              { l: 'Chronic History (Purva Vyadhi)', v: p.chronic_history, icon: 'history' },
-                            ].filter(x => x.v && x.v !== 'N/A').map(x => (
-                              <div key={x.l} className="flex items-start gap-1.5 font-body-sm text-body-sm">
-                                <span className="material-symbols-outlined text-[15px] text-primary mt-0.5">{x.icon}</span>
-                                <span><strong className="text-on-surface">{x.l}:</strong> <span className="text-on-surface-variant">{x.v}</span></span>
-                              </div>
-                            ))}
+                        {/* Chronic history stays visible — it is a safety flag, not an AYUSH pillar */}
+                        {p.chronic_history && p.chronic_history !== 'N/A' && (
+                          <div className="flex items-start gap-1.5 rounded-xl bg-surface-container-low p-3 font-body-sm text-body-sm">
+                            <span className="material-symbols-outlined text-[15px] text-primary mt-0.5">history</span>
+                            <span><strong className="text-on-surface">Chronic History (Purva Vyadhi):</strong> <span className="text-on-surface-variant">{p.chronic_history}</span></span>
                           </div>
                         )}
 
@@ -514,7 +521,7 @@ export default function DoctorDashboard() {
 
                         {/* Actions */}
                         <div className="flex flex-wrap gap-2 pt-1">
-                          <button onClick={() => openBriefing(p)} className="px-3 py-1.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md flex items-center gap-1.5 shadow-sm transition-all">
+                          <button onClick={() => openBriefing(p)} className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-label-md text-label-md flex items-center gap-1.5 shadow-sm transition-all">
                             <span className="material-symbols-outlined text-[16px]">clinical_notes</span> Briefing
                           </button>
                           <button onClick={() => handleZoom(p)} disabled={zoomLoading} className="px-3 py-1.5 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
@@ -571,7 +578,10 @@ export default function DoctorDashboard() {
                         {rxOpen && (
                           <DiagnosisRxPanel
                             patient={withConsult(p)}
-                            onSaved={(c) => setConsults(prev => ({ ...prev, [p.id]: c }))}
+                            onSaved={(c, record) => {
+                              setConsults(prev => ({ ...prev, [p.id]: c }));
+                              if (record) setPatients(prev => prev.map(x => (x.id === p.id ? record : x)));
+                            }}
                           />
                         )}
                       </div>
@@ -628,7 +638,7 @@ export default function DoctorDashboard() {
                     <th className="py-3.5 px-5 font-semibold">Patient &amp; ABHA</th>
                     <th className="py-3.5 px-5 font-semibold">Chief Complaint</th>
                     <th className="py-3.5 px-5 font-semibold">Biomarkers</th>
-                    <th className="py-3.5 px-5 font-semibold">Ayurvedic</th>
+                    <th className="py-3.5 px-5 font-semibold">AYUSH 3 Pillars</th>
                     <th className="py-3.5 px-5 text-right font-semibold">Actions</th>
                   </tr>
                 </thead>
@@ -659,8 +669,7 @@ export default function DoctorDashboard() {
                       <span className="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm w-fit block">WBC: 16,500/uL</span>
                     </td>
                     <td className="py-4 px-5 align-top">
-                      <span className="font-label-md text-label-md text-on-surface font-semibold">Pittaja Vidradhi</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm w-fit block mt-1">Pitta-Vata Dushti</span>
+                      <PillarStack dosha="Vata-Pitta" agni="Tikshna Agni (Hyper/Pitta)" koshtha="Krura Koshtha (Constipated/Hard)" />
                     </td>
                     <td className="py-4 px-5 align-top text-right">
                       <div className="flex flex-col items-end gap-2">
@@ -698,8 +707,7 @@ export default function DoctorDashboard() {
                       <span className="px-2 py-0.5 rounded-md bg-error-container text-on-error-container font-label-sm text-label-sm w-fit block font-medium">Herb-Drug Alert</span>
                     </td>
                     <td className="py-4 px-5 align-top">
-                      <span className="font-label-md text-label-md text-on-surface font-semibold">Rakta-Pitta Prakopa</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm w-fit block mt-1">Pitta-Pradhana Vata</span>
+                      <PillarStack dosha="Pitta Dominant" agni="Tikshna Agni (Hyper/Pitta)" koshtha="Madhyama Koshtha (Balanced)" />
                     </td>
                     <td className="py-4 px-5 align-top text-right">
                       <div className="flex flex-col items-end gap-2">
@@ -733,8 +741,7 @@ export default function DoctorDashboard() {
                       <span className="px-2 py-0.5 rounded-md bg-surface-container text-on-surface-variant font-label-sm text-label-sm w-fit block mt-1">Metformin 1000mg + Nishamalaki</span>
                     </td>
                     <td className="py-4 px-5 align-top">
-                      <span className="font-label-md text-label-md text-on-surface font-semibold">Kapha-Medoroga</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm w-fit block mt-1">Kapha-Vataja Dushti</span>
+                      <PillarStack dosha="Kapha-Vata" agni="Manda Agni (Sluggish/Kapha)" koshtha="Madhyama Koshtha (Balanced)" />
                     </td>
                     <td className="py-4 px-5 align-top text-right">
                       <div className="flex flex-col items-end gap-2">

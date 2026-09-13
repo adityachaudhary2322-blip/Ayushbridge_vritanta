@@ -10,10 +10,11 @@ export default function LandingPortal() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-surface to-surface-container-low">
 
-      {/* Nav */}
-      <header className="w-full px-4 sm:px-8 h-16 flex items-center justify-between border-b border-surface-container-high bg-surface-container-lowest/80 backdrop-blur-sm">
+      {/* Nav — saffron → emerald accent strip over a saffron rule */}
+      <div className="h-1 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-600" />
+      <header className="w-full px-4 sm:px-8 h-16 flex items-center justify-between border-b-2 border-orange-500 bg-surface-container-lowest/90 backdrop-blur-sm">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
+          <div className="w-9 h-9 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-sm">
             <span className="material-symbols-outlined text-[20px]">spa</span>
           </div>
           <span className="font-title-md text-title-md text-on-surface font-semibold">AYUSH Swasthya Sahayak</span>
@@ -22,7 +23,7 @@ export default function LandingPortal() {
           <button onClick={() => navigate('/text-intake')} className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors">
             <span className="material-symbols-outlined text-[18px]">keyboard</span>Text Intake
           </button>
-          <button onClick={() => navigate('/doctor')} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-container text-on-surface hover:bg-surface-container-high font-label-md text-label-md transition-colors">
+          <button onClick={() => navigate('/doctor')} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-label-md text-label-md transition-colors shadow-sm">
             <span className="material-symbols-outlined text-[18px]">stethoscope</span>
             <span className="hidden sm:inline">Doctor Dashboard</span>
           </button>
@@ -33,12 +34,12 @@ export default function LandingPortal() {
 
         {/* Hero */}
         <section className="flex flex-col items-center text-center gap-5 pt-6">
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary font-label-md text-label-md">
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-orange-500 bg-orange-50 text-orange-700 font-label-md text-label-md">
             <span className="material-symbols-outlined text-[16px]">verified</span>
             Ministry of AYUSH · AI-assisted Tele-Triage
           </span>
           <h1 className="font-headline-lg text-headline-lg sm:text-[42px] leading-tight text-on-surface font-bold max-w-3xl">
-            AYUSH Swasthya Sahayak — AI Clinical Triage &amp; Teleconsultation
+            <span className="text-orange-600">AYUSH Swasthya Sahayak</span> — AI Clinical Triage &amp; <span className="text-emerald-700">Teleconsultation</span>
           </h1>
           <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
             A multilingual, voice-first triage assistant that registers patients hands-free, reads
@@ -69,7 +70,7 @@ export default function LandingPortal() {
               </div>
               <button
                 onClick={() => navigate('/kiosk')}
-                className="w-full px-5 py-3.5 rounded-2xl bg-primary text-on-primary font-label-lg text-label-lg shadow-sm hover:bg-primary-container transition-all flex items-center justify-center gap-2"
+                className="w-full px-5 py-3.5 rounded-2xl bg-emerald-600 text-white font-label-lg text-label-lg shadow-sm hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
               >
                 <span className="material-symbols-outlined text-[20px]">local_hospital</span>
                 Launch Kiosk
@@ -96,13 +97,13 @@ export default function LandingPortal() {
                   <p className="font-label-sm text-label-sm text-on-surface-variant">
                     Scan with your phone camera — the voice call opens in the mobile browser.
                     <br />
-                    <span className="text-primary font-semibold">Line {roomId}</span>
+                    <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-orange-500 text-white font-semibold">Line {roomId}</span>
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => navigate(`/teleconsult?room=${roomId}`)}
-                className="w-full px-5 py-3.5 rounded-2xl bg-surface-container-high text-on-surface font-label-lg text-label-lg hover:bg-surface-container transition-colors flex items-center justify-center gap-2"
+                className="w-full px-5 py-3.5 rounded-2xl bg-emerald-600 text-white font-label-lg text-label-lg shadow-sm hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
               >
                 <span className="material-symbols-outlined text-[20px]">call</span>
                 Start Voice Call on this Screen
@@ -111,7 +112,7 @@ export default function LandingPortal() {
 
             {/* 3 · Sign language */}
             <article className="group bg-surface-container-lowest rounded-3xl shadow-sm hover:shadow-lg ring-1 ring-tertiary-container hover:ring-tertiary transition-all p-6 flex flex-col gap-4 relative overflow-hidden">
-              <span className="absolute top-4 right-4 px-2.5 py-0.5 rounded-full bg-tertiary text-on-tertiary font-label-sm text-label-sm font-semibold">Beta</span>
+              <span className="absolute top-4 right-4 px-2.5 py-0.5 rounded-full bg-orange-500 text-white font-label-sm text-label-sm font-semibold">Beta</span>
               <div className="w-14 h-14 rounded-2xl bg-tertiary-container/40 text-on-tertiary-container flex items-center justify-center text-[30px]">🤟</div>
               <div className="flex-1 flex flex-col gap-1.5">
                 <h3 className="font-title-lg text-title-lg text-on-surface font-bold leading-tight">

@@ -122,6 +122,68 @@ function cleanUtterance(text) {
     .trim();
 }
 
+// ── The three AYUSH clinical pillars: Dosha, Agni, Koshtha ─────────────────────
+// Maps legacy / free-text values ("Mandagni", "Pitta-Vata", "Mridu") onto one
+// canonical option. Mirrors ayush-frontend/src/utils/ayushPillars.js.
+const DOSHA_OPTIONS = ['Vata Dominant', 'Pitta Dominant', 'Kapha Dominant', 'Vata-Pitta', 'Pitta-Kapha', 'Kapha-Vata', 'Tridoshaja'];
+const AGNI_OPTIONS = ['Sama Agni (Balanced)', 'Vishama Agni (Irregular/Vata)', 'Tikshna Agni (Hyper/Pitta)', 'Manda Agni (Sluggish/Kapha)'];
+const KOSHTHA_OPTIONS = ['Madhyama Koshtha (Balanced)', 'Krura Koshtha (Constipated/Hard)', 'Mrudu Koshtha (Soft/Frequent)'];
+const DOSHA_PAIRS = { 'pitta|vata': 'Vata-Pitta', 'kapha|pitta': 'Pitta-Kapha', 'kapha|vata': 'Kapha-Vata' };
+
+function normalizeDosha(value, fallback = 'Tridoshaja') {
+  const v = String(value || '').toLowerCase();
+  if (/tridosh|sannipat/.test(v)) return 'Tridoshaja';
+  const found = ['vata', 'pitta', 'kapha'].filter(d => v.includes(d === 'kapha' ? 'kap' : d));
+  if (found.length === 3) return 'Tridoshaja';
+  if (found.length === 2) return DOSHA_PAIRS[[...found].sort().join('|')];
+  if (found.length === 1) return `${found[0][0].toUpperCase()}${found[0].slice(1)} Dominant`;
+  return fallback;
+}
+
+function normalizeAgni(value, fallback = AGNI_OPTIONS[1]) {
+  const v = String(value || '').toLowerCase();
+  if (/vishama/.test(v)) return AGNI_OPTIONS[1];
+  if (/tikshn|tiksn|teekshn/.test(v)) return AGNI_OPTIONS[2];
+  if (/manda/.test(v)) return AGNI_OPTIONS[3];
+  if (/sama/.test(v)) return AGNI_OPTIONS[0];
+  return fallback;
+}
+
+function normalizeKoshtha(value, fallback = KOSHTHA_OPTIONS[0]) {
+  const v = String(value || '').toLowerCase();
+  if (/krura|krur/.test(v)) return KOSHTHA_OPTIONS[1];
+  if (/mrudu|mridu|mrdu/.test(v)) return KOSHTHA_OPTIONS[2];
+  if (/madhyam/.test(v)) return KOSHTHA_OPTIONS[0];
+  return fallback;
+}
+
+/** Writes a 3-pillar assessment onto every place a record carries it. */
+function applyPillars(record, { dosha, agni, koshtha }) {
+  record.dosha = dosha;
+  record.agni = agni;
+  record.koshtha = koshtha;
+  record.ayurvedicNotes = { ...(record.ayurvedicNotes || {}), agni, koshtha };
+  if (record.triageResult) {
+    record.triageResult = { ...record.triageResult, dosha, agni, koshtha, ayurvedicNotes: { ...(record.triageResult.ayurvedicNotes || {}), agni, koshtha } };
+  }
+}
+
+/** One-time upgrade of records stored before the 3-pillar vocabulary. Returns true if anything changed. */
+function migratePillars(record) {
+  const next = {
+    dosha: normalizeDosha(record.dosha),
+    agni: normalizeAgni(record.agni || record.ayurvedicNotes?.agni),
+    koshtha: normalizeKoshtha(record.koshtha || record.ayurvedicNotes?.koshtha),
+  };
+  const changed = next.dosha !== record.dosha || next.agni !== record.agni || next.koshtha !== record.koshtha
+    || record.ayurvedicNotes?.agni !== next.agni || record.ayurvedicNotes?.koshtha !== next.koshtha;
+  if (changed) applyPillars(record, next);
+  return changed;
+}
+
+// Runs here, after the option tables exist, rather than inside loadPatients().
+if (patients.filter(migratePillars).length) persistPatients();
+
 // ── Disease progression timeline ──────────────────────────────────────────────
 const TIMELINE_STATUSES = ['Mild', 'Moderate', 'Worsening', 'Acute', 'Improving', 'Chronic'];
 
@@ -166,9 +228,9 @@ Analyze the patient's demographics, symptoms and digestion details, and return O
   "triageLabel": "Critical|Urgent|Moderate|Routine",
   "surgicalAlert": true|false,
   "geneticAlert": true|false,
-  "dosha": "dominant dosha imbalance: Vata|Pitta|Kapha|Vata-Pitta|Pitta-Kapha|Vata-Kapha|Tridosha",
-  "agni": "Manda|Tikshna|Vishama|Sama",
-  "koshtha": "Krura|Mridu|Madhyama",
+  "dosha": "exactly one of: Vata Dominant|Pitta Dominant|Kapha Dominant|Vata-Pitta|Pitta-Kapha|Kapha-Vata|Tridoshaja",
+  "agni": "exactly one of: Sama Agni (Balanced)|Vishama Agni (Irregular/Vata)|Tikshna Agni (Hyper/Pitta)|Manda Agni (Sluggish/Kapha)",
+  "koshtha": "exactly one of: Madhyama Koshtha (Balanced)|Krura Koshtha (Constipated/Hard)|Mrudu Koshtha (Soft/Frequent)",
   "redFlags": "comma-separated red flags / immediate referrals, or 'None'",
   "meds": "comma-separated medications mentioned, or 'None'",
   "labs": "comma-separated abnormal lab values mentioned, or 'None'",
@@ -187,8 +249,9 @@ P1 = acute surgical/cardiac emergency or red-flag presentation (set surgicalAler
 P2 = urgent, severe symptoms needing same-day review (triageLabel="Urgent")
 P3 = chronic/moderate, standard consult (triageLabel="Moderate")
 P4 = wellness/preventive/routine (triageLabel="Routine")
-Agni: Manda=low/sluggish, Tikshna=sharp/excessive, Vishama=irregular, Sama=balanced.
-Koshtha: Krura=hard/constipated bowel, Mridu=soft/loose, Madhyama=regular.
+The AYUSH assessment is streamlined to three pillars — Dosha, Agni, Koshtha — using the exact option strings above.
+Agni: Manda=low/sluggish (Kapha), Tikshna=sharp/excessive (Pitta), Vishama=irregular (Vata), Sama=balanced.
+Koshtha: Krura=hard/constipated bowel, Mrudu=soft/frequent, Madhyama=regular.
 Set geneticAlert=true if hereditary/family history conditions are mentioned.
 Also weigh these when present:
 - Sleep & Stress (Nidra/Manas): insomnia, broken sleep or high anxiety indicates Vata/Pitta manas aggravation — reflect in dosha and raise urgency if severe.
@@ -550,15 +613,15 @@ ${languageInstruction(lang)}`
       triageLabel: parsed.triageLabel || 'Moderate',
       surgicalAlert: !!parsed.surgicalAlert,
       geneticAlert: !!parsed.geneticAlert,
-      dosha: parsed.dosha || 'Tridosha',
-      agni: parsed.agni || agni || 'Vishama',
-      koshtha: parsed.koshtha || koshtha || 'Madhyama',
+      dosha: normalizeDosha(parsed.dosha),
+      agni: normalizeAgni(parsed.agni || agni),
+      koshtha: normalizeKoshtha(parsed.koshtha || koshtha),
       redFlags: parsed.redFlags || 'None',
       meds: parsed.meds || (attachedDocs?.ocrData?.medicines?.map(m => m.name).join(', ')) || 'None',
       labs: parsed.labs || (attachedDocs?.ocrData?.abnormalLabValues?.map(l => `${l.test} ${l.value}`).join(', ')) || 'None',
       recommendation: parsed.recommendation || 'Standard Ayurvedic consultation advised.',
       diagnosticCorrelation: parsed.diagnosticCorrelation || attachedDocs?.ocrData?.ayushCorrelation || 'No prior records available for correlation.',
-      ayurvedicNotes: { agni: parsed.agni || agni || 'Vishama', koshtha: parsed.koshtha || koshtha || 'Madhyama' },
+      ayurvedicNotes: { agni: normalizeAgni(parsed.agni || agni), koshtha: normalizeKoshtha(parsed.koshtha || koshtha) },
       diseaseTimeline: normalizeTimeline(parsed.diseaseTimeline, complaintText),
     };
     saveRecord(triageResult);
@@ -570,15 +633,15 @@ ${languageInstruction(lang)}`
       triageLabel: 'Moderate',
       surgicalAlert: false,
       geneticAlert: false,
-      dosha: 'Tridosha',
-      agni: agni || 'Vishama',
-      koshtha: koshtha || 'Madhyama',
+      dosha: 'Tridoshaja',
+      agni: normalizeAgni(agni),
+      koshtha: normalizeKoshtha(koshtha),
       redFlags: 'None',
       meds: (attachedDocs?.ocrData?.medicines?.map(m => m.name).join(', ')) || 'None',
       labs: (attachedDocs?.ocrData?.abnormalLabValues?.map(l => `${l.test} ${l.value}`).join(', ')) || 'None',
       recommendation: 'Standard Ayurvedic consultation advised. Physician review recommended.',
       diagnosticCorrelation: attachedDocs?.ocrData?.ayushCorrelation || 'No prior records available for correlation.',
-      ayurvedicNotes: { agni: agni || 'Vishama', koshtha: koshtha || 'Madhyama' },
+      ayurvedicNotes: { agni: normalizeAgni(agni), koshtha: normalizeKoshtha(koshtha) },
       diseaseTimeline: normalizeTimeline(null, complaintText),
     };
     saveRecord(triageResult);
@@ -974,9 +1037,27 @@ app.post('/api/consultation/save', (req, res) => {
   const {
     token, diagnosis, ayushDiagnosis, clinicalNotes,
     prescription, advice, followUpDate, status,
+    dosha, agni, koshtha,                     // physician-verified AYUSH pillars
   } = req.body || {};
 
   if (!token) return res.status(400).json({ success: false, error: 'token is required' });
+  const target = patients.find(r => matchesToken(r, token));
+
+  // The AI's original read is snapshotted once, so "edited by doctor" survives reloads.
+  const aiAssessment = target?.aiAssessment || (target && {
+    dosha: normalizeDosha(target.dosha),
+    agni: normalizeAgni(target.agni || target.ayurvedicNotes?.agni),
+    koshtha: normalizeKoshtha(target.koshtha || target.ayurvedicNotes?.koshtha),
+  });
+  // A pillar the request omits keeps the record's current (possibly already edited) value.
+  const assessment = {
+    dosha: normalizeDosha(dosha, target ? normalizeDosha(target.dosha) : 'Tridoshaja'),
+    agni: normalizeAgni(agni, target ? normalizeAgni(target.agni || target.ayurvedicNotes?.agni) : undefined),
+    koshtha: normalizeKoshtha(koshtha, target ? normalizeKoshtha(target.koshtha || target.ayurvedicNotes?.koshtha) : undefined),
+  };
+  assessment.editedByDoctor = aiAssessment
+    ? ['dosha', 'agni', 'koshtha'].filter(k => assessment[k] !== aiAssessment[k])
+    : [];
 
   const consultation = {
     diagnosis: String(diagnosis || '').trim(),
@@ -985,18 +1066,20 @@ app.post('/api/consultation/save', (req, res) => {
     prescription: sanitizePrescription(prescription),
     advice: String(advice || '').trim(),
     followUpDate: String(followUpDate || '').trim(),
+    assessment,
     signedBy: 'Dr. Ananya Sharma, BAMS, MD (Ayurveda)',
     regNo: 'AY-DL-88421',
     signedAt: new Date().toISOString(),
   };
   const nextStatus = status === 'CONSULTED' ? 'CONSULTED' : 'COMPLETED';
 
-  const target = patients.find(r => matchesToken(r, token));
   if (!target) {
     // Rows that never went through intake (static dashboard rows) still need to print.
     return res.json({ success: true, persisted: false, token, status: nextStatus, consultation });
   }
 
+  target.aiAssessment = aiAssessment;
+  applyPillars(target, assessment);
   target.consultation = consultation;
   target.status = nextStatus;
   target.token = target.token || tokenOf(target);
