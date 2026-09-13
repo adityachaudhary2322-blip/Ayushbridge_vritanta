@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { normalizeClinicalDocs, flagStyle, docTypeLabel, docTime } from '../utils/clinicalDocs';
-import { filledMedications } from '../utils/consultation';
+import { filledMedications, patientToken } from '../utils/consultation';
+import { PrintDiseaseTimeline } from './DiseaseTimeline';
 
 // Printable A4 "Combined Total Case History Sheet" — Ministry of AYUSH format.
 // Rendered in an overlay; window.print() + @media print CSS isolate the sheet.
@@ -43,7 +44,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
   const [exporting, setExporting] = useState(false);
   const autoRanRef = useRef(false);
 
-  const token = patient?.id ? `AYUSH-${String(patient.id).slice(-6).toUpperCase()}` : 'AYUSH-000000';
+  const token = patientToken(patient);
 
   // html2pdf pulls in jsPDF + html2canvas (~1 MB), so it is imported only when a
   // physician actually asks for a download — it never lands in the main bundle.
@@ -60,7 +61,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
       await html2pdf()
         .set({
           margin: 10,
-          filename: `AyushBridge_CaseSheet_${patient.token || token}_${safeName}.pdf`,
+          filename: `AyushBridge_CaseSheet_${token}_${safeName}.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -202,9 +203,16 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           <Row label="Reported Symptoms" value={p.symptoms} />
           <Row label="Chronic History (Purva Vyadhi)" value={(p.chronic_history && p.chronic_history !== 'N/A') ? p.chronic_history : 'None reported'} />
           <Row label="Red Flags / Alerts" value={(p.redFlags && p.redFlags !== 'None') ? p.redFlags : (p.surgicalAlert ? 'Surgical alert flagged' : 'None')} />
+          {Array.isArray(p.followups) && p.followups.map((f, i) => (
+            <Row key={i} label={`Follow-up Q${i + 1}`} value={`${f.question} — ${f.answer}`} />
+          ))}
         </Section>
 
-        <Section n={3} title="AYUSH Rogi Pariksha Matrix">
+        <Section n={3} title="📅 Disease Progression Timeline / रोग प्रगति समय-रेखा">
+          <PrintDiseaseTimeline events={p.diseaseTimeline} />
+        </Section>
+
+        <Section n={4} title="AYUSH Rogi Pariksha Matrix">
           <Row label="Dosha Imbalance" value={p.dosha} />
           <Row label="Agni (Digestive Fire)" value={agni} />
           <Row label="Koshtha (Bowel)" value={koshtha} />
@@ -213,7 +221,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           <Row label="Bala & Lifestyle (Energy)" value={(p.energy_lifestyle && p.energy_lifestyle !== 'N/A') ? p.energy_lifestyle : '—'} />
         </Section>
 
-        <Section n={4} title="Past Medical Records (Scanned at Kiosk) — Documents">
+        <Section n={5} title="Past Medical Records (Scanned at Kiosk) — Documents">
           {clinical.reports.length ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {clinical.reports.map((r, i) => (
@@ -234,7 +242,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           )}
         </Section>
 
-        <Section n={5} title="Past Medical Records (Scanned at Kiosk) — Existing Medications">
+        <Section n={6} title="Past Medical Records (Scanned at Kiosk) — Existing Medications">
           {clinical.medicines.length ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
               {clinical.medicines.map((m, i) => (
@@ -251,7 +259,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           )}
         </Section>
 
-        <Section n={6} title="Scanned Lab Matrix">
+        <Section n={7} title="Scanned Lab Matrix">
           {clinical.labTests.length ? (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, marginTop: 4 }}>
               <thead>
@@ -287,7 +295,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           {clinical.observations && <div style={{ marginTop: 6 }}><Row label="Clinical Observations" value={clinical.observations} /></div>}
         </Section>
 
-        <Section n={7} title="AI Vaidya — Clinical / AYUSH Correlation">
+        <Section n={8} title="AI Vaidya — Clinical / AYUSH Correlation">
           <div style={{ background: '#f7f5ff', borderLeft: '3px solid #6750a4', padding: '8px 10px', fontSize: 12, lineHeight: 1.55 }}>
             {p.diagnosticCorrelation || clinical.correlation ||
               `Reported markers — Dosha ${p.dosha || '—'}, Agni ${agni}, Koshtha ${koshtha}. ${clinical.labTests.length ? 'Correlate the lab matrix above with these Ayurvedic markers during examination.' : 'No prior records available for correlation.'}`}
@@ -297,7 +305,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           </div>
         </Section>
 
-        <Section n={8} title="Current Physician Prescription (Rx) & Clinical Diagnosis">
+        <Section n={9} title="Current Physician Prescription (Rx) & Clinical Diagnosis">
           <Row label="AI Recommendation" value={p.recommendation} />
 
           {/* Physician's own diagnosis — printed when signed, ruled lines when not. */}

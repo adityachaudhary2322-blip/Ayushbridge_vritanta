@@ -11,6 +11,9 @@ node_modules/
 .env.local
 .env.*.local
 
+# Runtime patient store — regenerated from ayush-backend/seedPatients.js on first boot
+ayush-backend/data/
+
 # Build outputs
 dist/
 build/

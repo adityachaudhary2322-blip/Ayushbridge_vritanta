@@ -5,7 +5,9 @@ import PatientAdviceDrawer from './PatientAdviceDrawer';
 import CaseReportModal from './CaseReportModal';
 import CaseHistorySheet from './CaseHistorySheet';
 import DiagnosisRxPanel from './DiagnosisRxPanel';
+import DiseaseTimeline from './DiseaseTimeline';
 import { normalizeClinicalDocs, flagStyle, docTypeLabel, docTime } from '../utils/clinicalDocs';
+import { patientToken } from '../utils/consultation';
 
 const API = '/api';
 
@@ -25,6 +27,9 @@ export default function DoctorDashboard() {
   const [autoPdf, setAutoPdf] = useState(false);         // open the sheet and export straight away
   const [openRxId, setOpenRxId] = useState(null);        // which patient card's Rx builder is expanded
   const [consults, setConsults] = useState({});          // id → signed consultation, mirrored locally for instant print
+  const [uploadingId, setUploadingId] = useState(null);  // patient card currently attaching a document
+  const [deletingId, setDeletingId] = useState(null);
+  const [cardError, setCardError] = useState({});        // id → last upload/delete error
 
   useEffect(() => {
     fetchPatients();
@@ -38,6 +43,46 @@ export default function DoctorDashboard() {
       const data = await res.json();
       if (Array.isArray(data)) setPatients(data);
     } catch { /* ignore — keep last-known queue */ }
+  };
+
+  const setErrorFor = (id, msg) => setCardError(prev => ({ ...prev, [id]: msg }));
+
+  const handleDelete = async (p) => {
+    if (!window.confirm('Are you sure you want to permanently delete this patient record?')) return;
+    setDeletingId(p.id);
+    setErrorFor(p.id, '');
+    try {
+      const res = await fetch(`${API}/patients/${encodeURIComponent(patientToken(p))}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
+      setPatients(prev => prev.filter(x => x.id !== p.id));
+      if (openRxId === p.id) setOpenRxId(null);
+      if (openDocsId === p.id) setOpenDocsId(null);
+    } catch (err) {
+      setErrorFor(p.id, `Delete failed: ${err.message}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // Physician attaches a prescription / lab report to an existing record.
+  const handleUpload = async (p, file) => {
+    if (!file) return;
+    setUploadingId(p.id);
+    setErrorFor(p.id, '');
+    try {
+      const fd = new FormData();
+      fd.append('document', file);
+      const res = await fetch(`${API}/patients/${encodeURIComponent(patientToken(p))}/documents`, { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.record) throw new Error(data.error || `HTTP ${res.status}`);
+      setPatients(prev => prev.map(x => (x.id === p.id ? data.record : x)));
+      setOpenDocsId(p.id);
+    } catch (err) {
+      setErrorFor(p.id, `Upload failed: ${err.message}`);
+    } finally {
+      setUploadingId(null);
+    }
   };
 
   // A just-signed Rx must reach the A4 sheet before the 10s queue poll returns it.
@@ -233,7 +278,7 @@ export default function DoctorDashboard() {
             <section className="flex flex-col gap-4">
               <div className="flex items-center gap-2 px-1">
                 <span className="font-headline-sm text-headline-sm text-on-surface">Live Triage Queue</span>
-                <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-primary font-label-sm text-label-sm">{patients.length} New Record{patients.length > 1 ? 's' : ''}</span>
+                <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-primary font-label-sm text-label-sm">{patients.length} OPD Record{patients.length > 1 ? 's' : ''}</span>
                 <span className="inline-flex items-center gap-1 font-label-sm text-label-sm text-tertiary ml-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span> auto-refresh 10s
                 </span>
@@ -260,6 +305,7 @@ export default function DoctorDashboard() {
                           <span className="font-body-sm text-body-sm text-on-surface-variant">
                             {p.age !== 'N/A' ? `${p.age}` : '—'}{p.gender !== 'N/A' ? ` • ${p.gender}` : ''}{p.phone !== 'N/A' ? ` • 📱 ${p.phone}` : ''}
                           </span>
+                          <span className="font-label-sm text-label-sm text-on-surface-variant">Token: <strong className="text-on-surface">{patientToken(p)}</strong></span>
                         </div>
                         {hasDocs && (
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary font-label-sm text-label-sm shrink-0">
@@ -292,6 +338,24 @@ export default function DoctorDashboard() {
                         {p.redFlags && p.redFlags !== 'None' && (
                           <div className="inline-flex items-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-error-container/40 text-on-error-container font-label-sm text-label-sm w-fit">
                             <span className="material-symbols-outlined text-error text-[15px]">warning</span> {p.redFlags}
+                          </div>
+                        )}
+
+                        <DiseaseTimeline events={p.diseaseTimeline} />
+
+                        {/* Adaptive voice follow-ups asked at the kiosk */}
+                        {Array.isArray(p.followups) && p.followups.length > 0 && (
+                          <div className="flex flex-col gap-1.5 rounded-xl bg-surface-container-low p-3">
+                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-primary text-[15px]">forum</span>
+                              AI Vaidya Follow-up Questions
+                            </span>
+                            {p.followups.map((f, i) => (
+                              <div key={i} className="font-body-sm text-body-sm">
+                                <div className="text-on-surface"><strong>Q{i + 1}:</strong> {f.question}</div>
+                                <div className="text-on-surface-variant pl-6">↳ {f.answer}</div>
+                              </div>
+                            ))}
                           </div>
                         )}
 
@@ -465,7 +529,28 @@ export default function DoctorDashboard() {
                           <button onClick={() => openCaseReport(p)} className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
                             <span className="material-symbols-outlined text-[15px]">description</span> Case Report
                           </button>
+                          <label className={`px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors ${uploadingId === p.id ? 'opacity-70 pointer-events-none' : 'cursor-pointer'}`}>
+                            <span className={`material-symbols-outlined text-[15px] ${uploadingId === p.id ? 'animate-spin' : ''}`}>{uploadingId === p.id ? 'progress_activity' : 'upload_file'}</span>
+                            {uploadingId === p.id ? 'Analysing…' : 'Upload Document'}
+                            <input
+                              type="file"
+                              accept="image/*,application/pdf"
+                              className="hidden"
+                              onChange={(e) => { handleUpload(p, e.target.files?.[0]); e.target.value = ''; }}
+                            />
+                          </label>
+                          <button
+                            onClick={() => handleDelete(p)}
+                            disabled={deletingId === p.id}
+                            className="px-3 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 font-label-md text-label-md flex items-center gap-1 transition-colors shadow-sm disabled:opacity-70"
+                          >
+                            <span className="material-symbols-outlined text-[15px]">delete</span>
+                            {deletingId === p.id ? 'Deleting…' : '🗑️ Delete Record / रिकॉर्ड हटाएं'}
+                          </button>
                         </div>
+                        {cardError[p.id] && (
+                          <span className="font-label-sm text-label-sm text-error">{cardError[p.id]}</span>
+                        )}
 
                         {/* Physician diagnosis & prescription builder */}
                         <button

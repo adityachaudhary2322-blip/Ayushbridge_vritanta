@@ -98,8 +98,14 @@ export default function TeleConsultRoom() {
   const [stage, setStage] = useState('name');
   const [fields, setFields] = useState({ name: '', age: '', gender: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' });
   const [triageResult, setTriageResult] = useState(null);
-  const [webcamError, setWebcamError] = useState(false);
   const [audioOutputMode, setAudioOutputMode] = useState('speaker'); // 'speaker' | 'earpiece'
+  const [muted, setMuted] = useState(false);
+  const [onHold, setOnHold] = useState(false);
+  const [callSeconds, setCallSeconds] = useState(0);
+  const [callNotes, setCallNotes] = useState('');     // physician's notes, saved with the record
+  const mutedRef = useRef(false);
+  const onHoldRef = useRef(false);
+  const callNotesRef = useRef('');
   const [docChoice, setDocChoice] = useState('none'); // 'none' | 'ask' | 'yes' (document inquiry)
   const [docResult, setDocResult] = useState(null);
   const docAdvancedRef = useRef(false);
@@ -108,8 +114,6 @@ export default function TeleConsultRoom() {
   const mobileUrl = `${window.location.origin}/mobile-scan?sid=${sessionId}`;
 
   const recRef = useRef(null);
-  const streamRef = useRef(null);
-  const videoRef = useRef(null);
   const langRef = useRef('en');
   const langChosenRef = useRef(false);
   const stageRef = useRef('name');
@@ -130,17 +134,35 @@ export default function TeleConsultRoom() {
     ? '⚠️ वॉयस सेवा त्रुटि — कृपया दोबारा प्रयास करें या नीचे टाइप/टैप करें।'
     : '⚠️ Voice Service Error reaching TTS — retry or type/tap your answer below.');
 
-  const startWebcam = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.muted = true; }
-    } catch {
-      setWebcamError(true);
-    }
-  };
-  const stopWebcam = () => { streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null; };
   const stopRec = () => { if (recRef.current?.state === 'recording') recRef.current.stop(); };
+
+  // Mute / Hold pause the interview loop: bumping the stage token orphans any
+  // in-flight speak→listen chain, and resuming re-asks the current question.
+  const pauseInterview = () => {
+    stageTokenRef.current++;
+    stopRec();
+    setLiveVolume(0);
+    setBotStatus('idle');
+  };
+  const resumeInterview = () => {
+    if (mutedRef.current || onHoldRef.current || phase !== 'interview' || triageResult) return;
+    setVoiceError('');
+    const token = ++stageTokenRef.current;
+    if (stageRef.current === 'has_documents') runDocStage(token);
+    else askAndListen(stageRef.current, 0, token);
+  };
+  const toggleMute = () => {
+    const next = !mutedRef.current;
+    mutedRef.current = next;
+    setMuted(next);
+    if (next) pauseInterview(); else resumeInterview();
+  };
+  const toggleHold = () => {
+    const next = !onHoldRef.current;
+    onHoldRef.current = next;
+    setOnHold(next);
+    if (next) { stopSarvamAudio(); pauseInterview(); } else resumeInterview();
+  };
 
   // Bot speech — cancels any prior audio (singleton), cuts the mic first so the
   // bot's own voice can never be recorded, and routes to speaker/earpiece.
@@ -243,6 +265,7 @@ export default function TeleConsultRoom() {
           symptoms: f.complaint, agni: f.agni, koshtha: f.koshtha,
           sleep_stress: f.sleep_stress, energy_lifestyle: f.energy_lifestyle, chronic_history: f.chronic_history,
           sessionId, lang: coerceTeleconsultLang(langRef.current), room,
+          triageSource: 'Telephony Voice Call', callNotes: callNotesRef.current,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -301,10 +324,11 @@ export default function TeleConsultRoom() {
   };
 
   async function askAndListen(stageKey, attempt, token) {
-    if (!stageAlive(token)) return;
+    if (!stageAlive(token) || onHoldRef.current) return;
     const code = coerceTeleconsultLang(langRef.current);
     await speak(attempt === 0 ? Q[stageKey][langRef.current] : REPROMPT[langRef.current]);
     if (!stageAlive(token)) return;
+    if (mutedRef.current) { setBotStatus('idle'); return; } // muted: ask, but don't open the mic
     const r = await listenOnce({ langCode: code });
     if (!stageAlive(token)) return; // a chip/text tap already advanced
     if (r.status === 'ok') { acceptAnswer(stageKey, r.text); return; }
@@ -348,8 +372,10 @@ export default function TeleConsultRoom() {
     docAdvancedRef.current = false;
     setDocChoice('ask');
     setTranscript('');
+    if (onHoldRef.current) return;
     await speak(DOC_Q[langRef.current], langRef.current);
     if (!stageAlive(token)) return;
+    if (mutedRef.current) { setBotStatus('idle'); return; }
     const r = await listenOnce({ langCode: coerceTeleconsultLang(langRef.current) });
     if (!stageAlive(token)) return;
     if (r.status === 'ok') {
@@ -393,9 +419,15 @@ export default function TeleConsultRoom() {
     isMountedRef.current = false;
     stopSarvamAudio();
     stopRec();
-    stopWebcam();
     navigate('/');
   };
+
+  // Call duration timer — starts once the patient is connected.
+  useEffect(() => {
+    if (phase === 'waiting' || phase === 'admitted' || triageResult) return undefined;
+    const id = setInterval(() => setCallSeconds(s => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [phase, triageResult]);
 
   // Poll for a mobile document upload tied to this session
   useEffect(() => {
@@ -425,13 +457,11 @@ export default function TeleConsultRoom() {
   useEffect(() => {
     isMountedRef.current = true;
     const myRun = ++runIdRef.current;    // new token each mount → StrictMode's first run is orphaned
-    startWebcam();
     runFlow(myRun);
     return () => {
       isMountedRef.current = false;
       stopSarvamAudio();
       stopRec();
-      stopWebcam();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -443,87 +473,88 @@ export default function TeleConsultRoom() {
   return (
     <div className="min-h-screen bg-neutral-900 text-white flex flex-col relative overflow-hidden">
 
+      <style>{`
+        @keyframes call-wave { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+      `}</style>
+
       {/* Top status bar */}
-      <div className="flex items-center justify-between px-4 sm:px-6 h-14 bg-neutral-950/80 backdrop-blur-sm border-b border-white/10">
-        <div className="flex items-center gap-2.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-          <span className="font-label-md text-label-md text-white/90">AYUSH Teleconsult · Room {room}</span>
+      <div className="flex items-center justify-between gap-2 px-4 sm:px-6 h-14 bg-neutral-950/80 backdrop-blur-sm border-b border-white/10">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${onHold ? 'bg-amber-400' : 'bg-green-500 animate-pulse'}`} />
+          <span className="font-label-md text-label-md text-white/90 truncate">📞 Telephony Voice Consultation · Line {room}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {phase !== 'waiting' && phase !== 'admitted' && (
-            <span className="px-2.5 py-1 rounded-full bg-white/10 font-label-sm text-label-sm text-white/80">{lang === 'hi' ? 'हिंदी' : 'English'}</span>
+            <>
+              <span className="px-2.5 py-1 rounded-full bg-white/10 font-label-sm text-label-sm text-white/80 tabular-nums">{formatDuration(callSeconds)}</span>
+              <span className="hidden sm:inline px-2.5 py-1 rounded-full bg-white/10 font-label-sm text-label-sm text-white/80">{lang === 'hi' ? 'हिंदी' : 'English'}</span>
+            </>
           )}
-          <button onClick={endCall} className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-label-md text-label-md flex items-center gap-1.5 transition-colors">
-            <span className="material-symbols-outlined text-[18px]">call_end</span>End Call
-          </button>
         </div>
       </div>
 
+      <div className="flex-1 flex flex-col lg:flex-row">
       {/* Main call area */}
-      <div className="flex-1 relative flex items-center justify-center p-4 sm:p-8">
+      <div className="flex-1 relative flex items-start justify-center p-4 sm:p-8 min-h-[780px]">
 
-        {/* Main tile: AI Vaidya */}
-        <div className="w-full max-w-3xl aspect-video bg-gradient-to-b from-primary/20 to-neutral-800 rounded-3xl shadow-2xl flex flex-col items-center justify-center gap-5 relative overflow-hidden ring-1 ring-white/10">
+        {/* Audio call card: AI Vaidya */}
+        <div className="w-full max-w-2xl bg-gradient-to-b from-primary/20 to-neutral-800 rounded-3xl shadow-2xl flex flex-col items-center gap-5 px-6 pt-10 pb-8 relative overflow-hidden ring-1 ring-white/10">
           <div className="relative flex items-center justify-center">
-            {(speaking || listening) && (
+            {(speaking || listening) && !onHold && (
               <>
-                <div className={`absolute w-48 h-48 rounded-full ${speaking ? 'bg-primary/20' : 'bg-tertiary/20'} animate-ping`} />
+                <div className={`absolute w-44 h-44 rounded-full ${speaking ? 'bg-primary/20' : 'bg-tertiary/20'} animate-ping`} />
                 <div className={`absolute w-36 h-36 rounded-full ${speaking ? 'bg-primary/25' : 'bg-tertiary/25'} animate-pulse`} />
               </>
             )}
             <div className={`relative w-28 h-28 rounded-full flex items-center justify-center shadow-2xl transition-all ${
-              speaking ? 'bg-primary scale-105' : listening ? 'bg-tertiary/80' : botStatus === 'thinking' ? 'bg-secondary/70' : 'bg-neutral-700'}`}>
+              onHold ? 'bg-amber-600/80' : speaking ? 'bg-primary scale-105' : listening ? 'bg-tertiary/80' : botStatus === 'thinking' ? 'bg-secondary/70' : 'bg-neutral-700'}`}>
               <span className="material-symbols-outlined text-[52px] text-white">
-                {speaking ? 'record_voice_over' : listening ? 'hearing' : botStatus === 'thinking' ? 'psychology' : 'stethoscope'}
+                {onHold ? 'phone_paused' : speaking ? 'record_voice_over' : listening ? 'hearing' : botStatus === 'thinking' ? 'psychology' : 'call'}
               </span>
             </div>
           </div>
           <div className="text-center">
             <div className="font-title-md text-title-md text-white font-semibold">Dr. AYUSH AI Vaidya</div>
             <div className="font-label-md text-label-md text-primary-fixed/90">
-              {speaking ? (lang === 'hi' ? 'बोल रहे हैं…' : 'Speaking…') :
+              {onHold ? (lang === 'hi' ? 'कॉल होल्ड पर है' : 'Call on hold') :
+               speaking ? (lang === 'hi' ? 'बोल रहे हैं…' : 'Speaking…') :
+               muted ? (lang === 'hi' ? 'आपका माइक म्यूट है' : 'Your microphone is muted') :
                listening ? (lang === 'hi' ? 'सुन रहे हैं…' : 'Listening…') :
-               botStatus === 'thinking' ? (lang === 'hi' ? 'प्रोसेस हो रहा है…' : 'Processing…') : 'AI Vaidya'}
+               botStatus === 'thinking' ? (lang === 'hi' ? 'प्रोसेस हो रहा है…' : 'Processing…') :
+               (lang === 'hi' ? 'कॉल जुड़ी है' : 'Connected')}
             </div>
           </div>
 
-          {/* Live mic VU meter — confirms the mic is capturing sound */}
-          {listening && (
-            <div className="flex items-end gap-1 h-8">
-              {[0.15, 0.4, 0.7, 1.0, 0.7, 0.4, 0.15].map((th, i) => (
-                <div key={i}
-                  className={`w-1.5 rounded-full transition-all duration-75 ${liveVolume >= th ? 'bg-green-400' : 'bg-green-400/25'}`}
-                  style={{ height: `${8 + th * 22}px` }} />
-              ))}
-            </div>
-          )}
+          {/* Voice waveform: live mic level while listening, animated while the Vaidya speaks */}
+          <div className="flex items-center gap-1 h-14" aria-hidden="true">
+            {WAVE_BARS.map((w, i) => {
+              const active = !onHold && (speaking || (listening && !muted));
+              const level = listening ? Math.max(0.12, Math.min(1, liveVolume * 1.6 * w)) : 0.12;
+              return (
+                <div
+                  key={i}
+                  className={`w-1.5 rounded-full origin-center ${speaking ? 'bg-primary-fixed' : listening ? 'bg-green-400' : 'bg-white/20'}`}
+                  style={speaking && active
+                    ? { height: `${16 + w * 40}px`, animation: `call-wave ${0.7 + (i % 5) * 0.12}s ease-in-out ${i * 0.05}s infinite` }
+                    : { height: `${8 + (active ? level : 0.12) * 48}px`, transition: 'height 80ms linear' }}
+                />
+              );
+            })}
+          </div>
 
           {/* Live subtitles */}
-          {caption && (
-            <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2 items-center">
-              <div className="max-w-xl bg-black/60 backdrop-blur-sm rounded-xl px-4 py-2.5 text-center">
+          <div className="w-full flex flex-col gap-2 items-center min-h-[96px]">
+            {caption && (
+              <div className="max-w-xl bg-black/50 rounded-xl px-4 py-2.5 text-center">
                 <p className="font-body-md text-body-md text-white">{caption}</p>
               </div>
-              {transcript && (
-                <div className="max-w-xl bg-primary/70 backdrop-blur-sm rounded-xl px-4 py-2 text-center">
-                  <p className="font-body-sm text-body-sm text-white">🗣️ {transcript}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Floating tile: patient camera */}
-        <div className="absolute bottom-6 right-6 w-40 sm:w-56 aspect-video bg-black rounded-2xl shadow-xl ring-2 ring-white/20 overflow-hidden">
-          {webcamError ? (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-white/50">
-              <span className="material-symbols-outlined text-[28px]">videocam_off</span>
-              <span className="font-label-sm text-label-sm">Camera off</span>
-            </div>
-          ) : (
-            <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-          )}
-          <span className="absolute bottom-1.5 left-2 px-2 py-0.5 rounded-full bg-black/60 text-white/90 font-label-sm text-label-sm">You</span>
+            )}
+            {transcript && (
+              <div className="max-w-xl bg-primary/70 rounded-xl px-4 py-2 text-center">
+                <p className="font-body-sm text-body-sm text-white">🗣️ {transcript}</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* IVR language buttons */}
@@ -620,7 +651,7 @@ export default function TeleConsultRoom() {
         )}
 
         {/* Interview chip / text fallback — noisy room or mic failure escape hatch (not on doc stage) */}
-        {phase === 'interview' && !triageResult && stage !== 'has_documents' && (
+        {phase === 'interview' && !triageResult && stage !== 'has_documents' && !onHold && (
           <div className="absolute inset-x-0 bottom-24 flex flex-col items-center gap-2.5 px-4">
             {TELE_CHIPS[stage] && (
               <div className="flex flex-wrap items-center justify-center gap-2 max-w-2xl">
@@ -695,18 +726,73 @@ export default function TeleConsultRoom() {
         )}
       </div>
 
-      {/* Bottom call-control toolbar */}
+      {/* Doctor clinical notes — live structured capture plus free-text notes */}
+      {phase !== 'waiting' && phase !== 'admitted' && (
+        <aside className="lg:w-80 shrink-0 bg-neutral-950/60 border-t lg:border-t-0 lg:border-l border-white/10 p-4 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary-fixed text-[20px]">clinical_notes</span>
+            <span className="font-title-md text-title-md text-white font-semibold">Doctor Clinical Notes</span>
+          </div>
+          <dl className="flex flex-col gap-1.5 rounded-xl bg-white/5 p-3 font-body-sm text-body-sm">
+            {[
+              ['Name', fields.name],
+              ['Age / Gender', [fields.age, fields.gender].filter(Boolean).join(' / ')],
+              ['Complaint', fields.complaint],
+              ['Agni / Koshtha', [fields.agni, fields.koshtha].filter(Boolean).join(' / ')],
+              ['Nidra & Manas', fields.sleep_stress],
+              ['Bala', fields.energy_lifestyle],
+              ['Purva Vyadhi', fields.chronic_history],
+            ].map(([k, v]) => (
+              <div key={k} className="flex gap-2">
+                <dt className="w-28 shrink-0 text-white/50">{k}</dt>
+                <dd className="text-white/90 break-words min-w-0">{v || '—'}</dd>
+              </div>
+            ))}
+          </dl>
+          <label className="flex flex-col gap-1.5">
+            <span className="font-label-sm text-label-sm text-white/60 uppercase tracking-wide">Physician notes</span>
+            <textarea
+              rows={6}
+              value={callNotes}
+              disabled={phase === 'complete'}
+              onChange={(e) => { setCallNotes(e.target.value); callNotesRef.current = e.target.value; }}
+              placeholder="Voice quality, patient's tone, observations to verify at OPD…"
+              className="w-full rounded-xl bg-white/10 px-3 py-2 font-body-sm text-body-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+            />
+            <span className="font-label-sm text-label-sm text-white/40">
+              {phase === 'complete' ? 'Saved with the patient record.' : 'Saved with the patient record when the call summary is generated.'}
+            </span>
+          </label>
+        </aside>
+      )}
+      </div>
+
+      {/* Bottom audio call controls */}
       {!triageResult && phase !== 'waiting' && phase !== 'admitted' && (
-        <div className="flex flex-col items-center gap-1.5 pb-5">
-          <button
-            onClick={toggleAudioOutput}
-            title="फोन कान पर लगाकर बात करें / Hold phone near ear"
-            className={`inline-flex items-center gap-2 px-5 py-3 rounded-full font-label-lg text-label-lg shadow-lg transition-all ${
-              audioOutputMode === 'speaker' ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-          >
-            <span className="material-symbols-outlined text-[22px]">{audioOutputMode === 'speaker' ? 'volume_up' : 'phone_in_talk'}</span>
-            {audioOutputMode === 'speaker' ? '🔊 लाउडस्पीकर / Speaker Mode' : '📱 कान के पास / Earpiece Mode'}
-          </button>
+        <div className="flex flex-col items-center gap-2 py-4 border-t border-white/10 bg-neutral-950/70">
+          <div className="flex flex-wrap items-start justify-center gap-4 sm:gap-6">
+            <CallControl
+              icon={muted ? 'mic_off' : 'mic'}
+              label={muted ? 'Unmute' : 'Mute'}
+              active={muted}
+              disabled={phase !== 'interview'}
+              onClick={toggleMute}
+            />
+            <CallControl
+              icon={onHold ? 'play_arrow' : 'pause'}
+              label={onHold ? 'Resume' : 'Hold'}
+              active={onHold}
+              disabled={phase !== 'interview'}
+              onClick={toggleHold}
+            />
+            <CallControl
+              icon={audioOutputMode === 'speaker' ? 'volume_up' : 'phone_in_talk'}
+              label={audioOutputMode === 'speaker' ? 'Speaker' : 'Earpiece'}
+              active={audioOutputMode === 'earpiece'}
+              onClick={toggleAudioOutput}
+            />
+            <CallControl icon="call_end" label="End Call" danger onClick={endCall} />
+          </div>
           <p className="font-label-sm text-label-sm text-white/50">फोन कान पर लगाकर बात करें / Hold phone near ear</p>
         </div>
       )}
@@ -714,9 +800,32 @@ export default function TeleConsultRoom() {
   );
 }
 
+// Relative heights for the waveform bars (symmetrical envelope).
+const WAVE_BARS = [0.3, 0.5, 0.75, 0.55, 0.9, 0.65, 1, 0.8, 0.6, 1, 0.7, 0.9, 0.5, 0.75, 0.45, 0.6, 0.3];
+
+function formatDuration(total) {
+  const m = String(Math.floor(total / 60)).padStart(2, '0');
+  const s = String(total % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function CallControl({ icon, label, onClick, active = false, danger = false, disabled = false }) {
+  return (
+    <button onClick={onClick} disabled={disabled} className="flex flex-col items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed group">
+      <span className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-colors ${
+        danger ? 'bg-red-600 group-hover:bg-red-700 text-white'
+          : active ? 'bg-white text-neutral-900'
+          : 'bg-white/15 group-hover:bg-white/25 text-white'}`}>
+        <span className="material-symbols-outlined text-[26px]">{icon}</span>
+      </span>
+      <span className="font-label-sm text-label-sm text-white/80">{label}</span>
+    </button>
+  );
+}
+
 function TeleSummary({ result, lang }) {
   const cfg = PRIORITY_CONFIG[result.triageLevel] || PRIORITY_CONFIG.P3;
-  const token = result.id ? `AYUSH-${String(result.id).slice(-6).toUpperCase()}` : 'AYUSH-000000';
+  const token = result.token || (result.id ? `AYUSH-${String(result.id).slice(-6).toUpperCase()}` : 'AYUSH-000000');
   return (
     <div>
       <div className={`${cfg.bg} px-6 py-5 text-white flex items-center justify-between`}>

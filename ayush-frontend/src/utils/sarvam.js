@@ -135,11 +135,13 @@ export async function recordAndTranscribe({ onResult, onError, onStart, onStop, 
 //   • maxRecordMs     — hard safety cutoff
 // Callbacks:
 //   • onVolumeChange(0..1) — live VU meter
+//   • onSilenceProgress(0..1) — how far through the trailing-silence window we are
+//     (0 while speaking), so the UI can show the auto-send countdown
 //   • onResult(transcript) — transcript string; "" means the user didn't speak / empty
 //   • onError(code, message) — 'api_error' (HTTP/network), 'not-allowed', 'start-failed'
 // Returns the MediaRecorder so the caller can stop it early on a manual tap / chip.
 export async function recordUntilSilence({
-  onResult, onError, onStart, onStop, onVolumeChange,
+  onResult, onError, onStart, onStop, onVolumeChange, onSilenceProgress,
   initialWaitMs = 5000, trailingSilenceMs = 2000, maxRecordMs = 9000, langCode,
 }) {
   let stream;
@@ -190,6 +192,7 @@ export async function recordUntilSilence({
       if (rms > SPEAK_THRESHOLD) { hasSpoken = true; lastSpokenTime = Date.now(); }
 
       const now = Date.now();
+      if (hasSpoken) onSilenceProgress?.(Math.min(1, (now - lastSpokenTime) / trailingSilenceMs));
       if (hasSpoken && (now - lastSpokenTime > trailingSilenceMs)) {
         if (rec.state === 'recording') rec.stop();
       } else if (!hasSpoken && (now - startTime > initialWaitMs)) {

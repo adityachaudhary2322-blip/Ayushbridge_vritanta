@@ -1,8 +1,10 @@
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
+const { seedPatients } = require('./seedPatients');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -30,13 +32,52 @@ app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-const globalPatients = [];              // legacy store (kept for /api/patients)
-const patientQueue = [];                // unified triage queue (P1→P4 sorted on read)
+// ── Persistent patient store (data/patients.json) ─────────────────────────────
+const DATA_DIR = path.join(__dirname, 'data');
+const DATA_FILE = path.join(DATA_DIR, 'patients.json');
+
+function loadPatients() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(DATA_FILE)) {
+    const seeded = seedPatients();
+    fs.writeFileSync(DATA_FILE, JSON.stringify(seeded, null, 2));
+    console.log(`✓  Initialised ${path.relative(__dirname, DATA_FILE)} with ${seeded.length} OPD records`);
+    return seeded;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    if (!Array.isArray(parsed)) throw new Error('expected a JSON array');
+    console.log(`✓  Loaded ${parsed.length} patient records from ${path.relative(__dirname, DATA_FILE)}`);
+    return parsed;
+  } catch (err) {
+    // Never silently overwrite a damaged file — set it aside so it can be recovered.
+    const backup = DATA_FILE.replace(/\.json$/, `.corrupt-${Date.now()}.json`);
+    fs.renameSync(DATA_FILE, backup);
+    console.error(`⚠️  patients.json unreadable (${err.message}) — moved to ${path.basename(backup)}, reseeding`);
+    const seeded = seedPatients();
+    fs.writeFileSync(DATA_FILE, JSON.stringify(seeded, null, 2));
+    return seeded;
+  }
+}
+
+// Write to a temp file then rename, so a crash mid-write cannot truncate the store.
+function persistPatients() {
+  const tmp = `${DATA_FILE}.tmp`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(patients, null, 2));
+    fs.renameSync(tmp, DATA_FILE);
+  } catch (err) {
+    console.error('persistPatients error:', err.message);
+    try { fs.writeFileSync(DATA_FILE, JSON.stringify(patients, null, 2)); } catch { /* logged above */ }
+  }
+}
+
+const patients = loadPatients();        // every intake record, persisted on each change
 const sessionDocs = new Map();          // sessionId → { status, ocrData, fileBase64, mimeType, fileName }
 
 const PRIORITY_ORDER = { P1: 0, P2: 1, P3: 2, P4: 3 };
 function sortedQueue() {
-  return [...patientQueue].sort((a, b) => {
+  return [...patients].sort((a, b) => {
     const pa = PRIORITY_ORDER[a.triageLevel] ?? 9;
     const pb = PRIORITY_ORDER[b.triageLevel] ?? 9;
     if (pa !== pb) return pa - pb;
@@ -61,6 +102,55 @@ async function gemini(systemPrompt, userText, jsonMode = false) {
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
+// Gemini occasionally wraps JSON-mode output in markdown fences.
+function parseJson(raw) {
+  return JSON.parse(String(raw || '{}').replace(/```json\s*/gi, '').replace(/```\s*$/gi, '').trim());
+}
+
+// ── Conversational noise filter ───────────────────────────────────────────────
+// Strips hesitation fillers so only clinical content reaches the model and the record.
+// Delimiters are explicit because \b does not work with Devanagari.
+const FILLER_RE = /(^|[\s,.;!?।])(?:u+h+m*|u+m+|h+m+|e+r+m+|a+h+|actually|basically|you know|i mean|matlab|yaani|अ+ं+|उ+म्+|ह+म्+|मतलब|यानी)(?=$|[\s,.;!?।])/gi;
+
+function cleanUtterance(text) {
+  return String(text || '')
+    .replace(FILLER_RE, '$1')
+    .replace(/\s+([,.;!?।])/g, '$1')
+    .replace(/([,.;!?।])(?:\s*[,.;])+/g, '$1')
+    .replace(/^[\s,.;]+/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// ── Disease progression timeline ──────────────────────────────────────────────
+const TIMELINE_STATUSES = ['Mild', 'Moderate', 'Worsening', 'Acute', 'Improving', 'Chronic'];
+
+function normalizeTimelineStatus(status) {
+  const s = String(status || '').trim().toLowerCase();
+  const exact = TIMELINE_STATUSES.find(t => t.toLowerCase() === s);
+  if (exact) return exact;
+  if (/sever|critical|emergen|acute/.test(s)) return 'Acute';
+  if (/wors|progress|increas|aggravat/.test(s)) return 'Worsening';
+  if (/improv|better|resolv|reliev/.test(s)) return 'Improving';
+  if (/chronic|persist|long/.test(s)) return 'Chronic';
+  if (/mild|slight|onset/.test(s)) return 'Mild';
+  return 'Moderate';
+}
+
+function normalizeTimeline(list, complaint) {
+  const rows = (Array.isArray(list) ? list : [])
+    .filter(e => e && (e.event || e.description))
+    .map(e => ({
+      timeframe: String(e.timeframe || e.time || e.when || '').trim() || 'Duration not stated',
+      event: cleanUtterance(e.event || e.description),
+      status: normalizeTimelineStatus(e.status || e.severity),
+    }))
+    .filter(e => e.event)
+    .slice(0, 8);
+  if (rows.length) return rows;
+  return complaint ? [{ timeframe: 'Present', event: complaint, status: 'Moderate' }] : [];
+}
+
 const FOLLOWUP_SYSTEM = `You are an empathetic AYUSH Ayurvedic intake assistant conducting a clinical interview in India.
 Your goal is to systematically collect: patient name, age, gender, chief complaint with duration, Agni/appetite (Mandagni/Samagni/Tikshna), any red flags (chest pain, breathlessness, severe sudden pain), and current medications.
 Match the patient's language exactly — Hindi Devanagari if they use it, English or Roman Hinglish otherwise. NEVER mix scripts.
@@ -83,8 +173,15 @@ Analyze the patient's demographics, symptoms and digestion details, and return O
   "meds": "comma-separated medications mentioned, or 'None'",
   "labs": "comma-separated abnormal lab values mentioned, or 'None'",
   "recommendation": "2-sentence clinical recommendation for the AYUSH physician",
-  "diagnosticCorrelation": "2-3 sentences correlating any uploaded prescription medicines and lab markers with the patient's current Ayurvedic markers (Dosha, Agni, Koshtha, Ama, Bala). Say 'No prior records available for correlation.' when no documents were supplied."
+  "diagnosticCorrelation": "2-3 sentences correlating any uploaded prescription medicines and lab markers with the patient's current Ayurvedic markers (Dosha, Agni, Koshtha, Ama, Bala). Say 'No prior records available for correlation.' when no documents were supplied.",
+  "diseaseTimeline": [
+    { "timeframe": "relative time, e.g. '2 weeks ago', '4 days ago', 'Today'", "event": "concise clinical event in English", "status": "Mild|Moderate|Worsening|Acute|Improving|Chronic" }
+  ]
 }
+Disease timeline rules:
+- Parse the complaint and every follow-up answer into 2-5 events ordered chronologically, oldest first; the last event describes the present ("Today" or "Present").
+- Use only durations and events the patient actually reported. If onset timing was not stated, use "Duration not stated" rather than inventing one.
+- Ignore conversational filler (uh, umm, actually, you know, matlab) — record clinical findings only, using Ayurvedic terms (e.g. Vishama Agni, Krura Koshtha) where they fit.
 Priority rules:
 P1 = acute surgical/cardiac emergency or red-flag presentation (set surgicalAlert=true, triageLabel="Critical")
 P2 = urgent, severe symptoms needing same-day review (triageLabel="Urgent")
@@ -306,6 +403,59 @@ ${languageInstruction(convoLang)}`
   }
 });
 
+// ── POST /api/adaptive-question — kiosk's two adaptive clinical follow-ups ─────
+// Turn 1 = complaint → Q1; Turn 2 = complaint + Q1/A1 → Q2. The kiosk stops after two.
+const ADAPTIVE_SYSTEM = `You are an AYUSH (Ayurveda) clinical intake Vaidya at a hospital OPD kiosk in India.
+You receive the patient's chief complaint and any follow-up answers already given. Ignore conversational filler (uh, umm, actually, you know, matlab) and reason only over the clinical content.
+Ask EXACTLY ONE short, specific, clinically relevant question (at most 20 words). No greeting, preamble, numbering or explanation.
+- Turn 1: clarify the chief complaint itself — onset, trigger, character/nature of the pain or discomfort, or an associated digestion (Agni) symptom.
+- Turn 2: ask the single most useful remaining clarification — sleep impact (Nidra), bowel pattern (Koshtha), or aggravating/relieving factors. Never repeat what was already asked or answered.
+If the answers suggest a red flag (sudden or severe abdominal pain, chest pain, breathlessness, bleeding, high fever), use the question to confirm its severity.
+Return ONLY JSON: {"question": "..."}`;
+
+const ADAPTIVE_FALLBACK = {
+  1: {
+    'hi-IN': 'यह तकलीफ कब और कैसे शुरू हुई — क्या खाने के बाद या किसी खास समय पर बढ़ती है?',
+    'en-IN': 'When and how did this problem start — do meals or a particular time of day make it worse?',
+  },
+  2: {
+    'hi-IN': 'क्या इस तकलीफ से आपकी नींद या पेट साफ होने में कोई बदलाव आया है?',
+    'en-IN': 'Has this problem affected your sleep or bowel movements, and does anything make it worse?',
+  },
+};
+
+app.post('/api/adaptive-question', async (req, res) => {
+  const { complaint, answers, turn, language_code } = req.body || {};
+  const n = Number(turn) === 2 ? 2 : 1;
+  const code = normalizeLangCode(language_code, 'en-IN');
+  // A question and its TTS voice must agree — languages without a fallback line speak English.
+  const fallback = () => {
+    const table = ADAPTIVE_FALLBACK[n];
+    return table[code]
+      ? { question: table[code], language_code: code, fallback: true }
+      : { question: table['en-IN'], language_code: 'en-IN', fallback: true };
+  };
+
+  const chief = cleanUtterance(complaint);
+  if (!chief || !GEMINI_KEY) return res.json(fallback());
+
+  const prior = (Array.isArray(answers) ? answers : [])
+    .slice(0, n - 1)
+    .map((a, i) => `Follow-up question ${i + 1}: ${a?.question || ''}\nPatient answer: ${cleanUtterance(a?.answer) || '(no answer)'}`)
+    .join('\n');
+  const input = [`Turn ${n} of 2`, `Chief complaint: ${chief}`, prior].filter(Boolean).join('\n');
+
+  try {
+    const system = `${ADAPTIVE_SYSTEM}\n\nWrite the question in ${languageName(code)}, using only its native script.`;
+    const question = String(parseJson(await gemini(system, input, true))?.question || '').trim();
+    if (!question) throw new Error('empty question');
+    res.json({ question: question.slice(0, 300), language_code: code });
+  } catch (err) {
+    console.error('adaptive-question error:', err.message);
+    res.json(fallback());
+  }
+});
+
 // ── POST /api/triage ──────────────────────────────────────────────────────────
 app.post('/api/triage', async (req, res) => {
   const {
@@ -313,12 +463,17 @@ app.post('/api/triage', async (req, res) => {
     sleep_stress, energy_lifestyle, chronic_history,
     sessionId, documents, conversation, lang,
     complaint, nidra, triageSource,          // sign-language kiosk field names
+    followups, callNotes,
   } = req.body;
 
   // The SignBridge wizard posts `complaint`/`nidra`; the voice kiosks post
   // `symptoms`/`sleep_stress`. Accept either so one triage engine serves both.
-  const complaintText = symptoms || complaint;
+  const complaintText = cleanUtterance(symptoms || complaint);
   const sleepText = sleep_stress || nidra;
+  const adaptiveFollowups = (Array.isArray(followups) ? followups : [])
+    .map(f => ({ question: String(f?.question || '').trim(), answer: cleanUtterance(f?.answer) }))
+    .filter(f => f.question && f.answer)
+    .slice(0, 2);
 
   // Attach any scanned document record for this session
   let attachedDocs = documents || null;
@@ -343,13 +498,18 @@ app.post('/api/triage', async (req, res) => {
   ].filter(Boolean).join('\n');
 
   const conversationText = Array.isArray(conversation)
-    ? conversation.map(m => `${m.role}: ${m.text}`).join('\n')
-    : String(conversation || '');
-  const analysisInput = [structured, conversationText].filter(Boolean).join('\n\n');
+    ? conversation.map(m => `${m.role}: ${cleanUtterance(m.text)}`).join('\n')
+    : cleanUtterance(conversation);
+  const followupText = adaptiveFollowups
+    .map((f, i) => `Adaptive follow-up ${i + 1}: ${f.question}\nPatient answer: ${f.answer}`)
+    .join('\n');
+  const analysisInput = [structured, followupText, conversationText].filter(Boolean).join('\n\n');
 
+  const recordId = patientId || `P${Date.now()}`;
   const baseRecord = {
-    id: patientId || `P${Date.now()}`,
-    patientId: patientId || `P${Date.now()}`,
+    id: recordId,
+    patientId: recordId,
+    token: `AYUSH-${String(recordId).slice(-6).toUpperCase()}`,
     name: name || 'Anonymous',
     age: age || 'N/A',
     gender: gender || 'N/A',
@@ -361,7 +521,17 @@ app.post('/api/triage', async (req, res) => {
     chronic_history: chronic_history || 'N/A',
     lang: lang || 'en',
     documents: attachedDocs,
+    followups: adaptiveFollowups,
+    callNotes: String(callNotes || '').trim(),
     timestamp: new Date().toISOString(),
+    status: 'WAITING',
+  };
+
+  const saveRecord = (triageResult) => {
+    const record = { ...baseRecord, ...triageResult, triageResult };
+    patients.push(record);
+    persistPatients();
+    res.json({ success: true, record });
   };
 
   try {
@@ -372,10 +542,10 @@ app.post('/api/triage', async (req, res) => {
 ${languageInstruction(lang)}`
       : TRIAGE_SYSTEM;
     const raw = await gemini(triageSystem, analysisInput || 'No details provided.', true);
-    const parsed = JSON.parse(raw);
+    const parsed = parseJson(raw);
     // Prefer patient-reported agni/koshtha when the model didn't override meaningfully
     const triageResult = {
-      chiefComplaint: parsed.chiefComplaint || symptoms || 'General consultation',
+      chiefComplaint: parsed.chiefComplaint || complaintText || 'General consultation',
       triageLevel: parsed.triageLevel || 'P3',
       triageLabel: parsed.triageLabel || 'Moderate',
       surgicalAlert: !!parsed.surgicalAlert,
@@ -389,15 +559,13 @@ ${languageInstruction(lang)}`
       recommendation: parsed.recommendation || 'Standard Ayurvedic consultation advised.',
       diagnosticCorrelation: parsed.diagnosticCorrelation || attachedDocs?.ocrData?.ayushCorrelation || 'No prior records available for correlation.',
       ayurvedicNotes: { agni: parsed.agni || agni || 'Vishama', koshtha: parsed.koshtha || koshtha || 'Madhyama' },
+      diseaseTimeline: normalizeTimeline(parsed.diseaseTimeline, complaintText),
     };
-    const record = { ...baseRecord, ...triageResult, triageResult };
-    patientQueue.push(record);
-    globalPatients.unshift(record);
-    res.json({ success: true, record });
+    saveRecord(triageResult);
   } catch (err) {
     console.error('triage error:', err.message);
     const triageResult = {
-      chiefComplaint: symptoms || 'General consultation',
+      chiefComplaint: complaintText || 'General consultation',
       triageLevel: 'P3',
       triageLabel: 'Moderate',
       surgicalAlert: false,
@@ -411,11 +579,9 @@ ${languageInstruction(lang)}`
       recommendation: 'Standard Ayurvedic consultation advised. Physician review recommended.',
       diagnosticCorrelation: attachedDocs?.ocrData?.ayushCorrelation || 'No prior records available for correlation.',
       ayurvedicNotes: { agni: agni || 'Vishama', koshtha: koshtha || 'Madhyama' },
+      diseaseTimeline: normalizeTimeline(null, complaintText),
     };
-    const record = { ...baseRecord, ...triageResult, triageResult };
-    patientQueue.push(record);
-    globalPatients.unshift(record);
-    res.json({ success: true, record });
+    saveRecord(triageResult);
   }
 });
 
@@ -609,36 +775,21 @@ function docsForPrompt(docs) {
   return docs.ocrData ? JSON.stringify(docs.ocrData) : '';
 }
 
-// ── POST /api/upload-mobile — phone scans QR, uploads doc → Gemini OCR → cache ─
-app.post('/api/upload-mobile', upload.single('document'), async (req, res) => {
-  const sessionId = req.body?.sessionId;
-  if (!sessionId) return res.status(400).json({ success: false, error: 'sessionId is required' });
-  if (!req.file) return res.status(400).json({ success: false, error: 'document file is required' });
-
-  const base64 = req.file.buffer.toString('base64');
-  const isPdfName = req.file.originalname.toLowerCase().endsWith('.pdf');
+// Runs one uploaded file through Gemini Vision and returns a stored report.
+// Always resolves — an OCR failure yields a report that still holds the original file.
+async function analyzeUpload(file) {
+  const base64 = file.buffer.toString('base64');
+  const isPdfName = file.originalname.toLowerCase().endsWith('.pdf');
 
   // Sanitize MIME: mobile pickers often send 'application/octet-stream' for PDFs.
   // Gemini Vision needs the correct type or it 500s — force application/pdf by extension.
-  const mimeType = (req.file.mimetype === 'application/pdf' || isPdfName)
+  const mimeType = (file.mimetype === 'application/pdf' || isPdfName)
     ? 'application/pdf'
-    : (req.file.mimetype || 'image/jpeg');
-
-  // Every upload appends — prior reports for this session are never overwritten.
-  const previous = sessionDocs.get(sessionId);
-  const priorReports = Array.isArray(previous?.reports) ? previous.reports : [];
-
-  // Mark as processing (keeping prior reports attached) so kiosks show a spinner
-  sessionDocs.set(sessionId, {
-    ...(previous || {}),
-    status: 'processing',
-    reports: priorReports,
-    fileName: req.file.originalname,
-  });
+    : (file.mimetype || 'image/jpeg');
 
   let extraction = {
     documentType: isPdfName ? 'LAB_REPORT' : 'MIXED',
-    title: req.file.originalname,
+    title: file.originalname,
     medicines: [],
     labTests: [],
     clinicalObservations: 'Document received (analysis unavailable).',
@@ -677,22 +828,42 @@ app.post('/api/upload-mobile', upload.single('document'), async (req, res) => {
       console.error('Failed to parse Gemini response as JSON:', rawText);
       parsed = { clinicalObservations: rawText.substring(0, 300) };
     }
-    extraction = normalizeExtraction(parsed, req.file.originalname);
+    extraction = normalizeExtraction(parsed, file.originalname);
   } catch (err) {
-    console.error('upload-mobile OCR error:', err.message);
-    // keep the resilient fallback so the demo still shows a processed document
+    console.error('document OCR error:', err.message);
+    // keep the resilient fallback so the physician still sees a stored document
     extraction.clinicalObservations = `Auto-analysis unavailable (${err.message}). Document stored for physician review.`;
   }
 
-  const newReport = {
+  return {
     id: `DOC-${Date.now().toString(36).toUpperCase()}`,
     ...extraction,
-    fileName: req.file.originalname,
+    fileName: file.originalname,
     mimeType,
     fileBase64: `data:${mimeType};base64,${base64}`,
     uploadedAt: new Date().toISOString(),
   };
+}
 
+// ── POST /api/upload-mobile — phone scans QR, uploads doc → Gemini OCR → cache ─
+app.post('/api/upload-mobile', upload.single('document'), async (req, res) => {
+  const sessionId = req.body?.sessionId;
+  if (!sessionId) return res.status(400).json({ success: false, error: 'sessionId is required' });
+  if (!req.file) return res.status(400).json({ success: false, error: 'document file is required' });
+
+  // Every upload appends — prior reports for this session are never overwritten.
+  const previous = sessionDocs.get(sessionId);
+  const priorReports = Array.isArray(previous?.reports) ? previous.reports : [];
+
+  // Mark as processing (keeping prior reports attached) so kiosks show a spinner
+  sessionDocs.set(sessionId, {
+    ...(previous || {}),
+    status: 'processing',
+    reports: priorReports,
+    fileName: req.file.originalname,
+  });
+
+  const newReport = await analyzeUpload(req.file);
   const record = buildSessionRecord([...priorReports, newReport]);
   sessionDocs.set(sessionId, record);
 
@@ -820,26 +991,53 @@ app.post('/api/consultation/save', (req, res) => {
   };
   const nextStatus = status === 'CONSULTED' ? 'CONSULTED' : 'COMPLETED';
 
-  // Same record object is shared by both stores for live records, but demo/legacy
-  // entries can diverge — patch every match so the queue and /api/patients agree.
-  const targets = [...patientQueue, ...globalPatients].filter(r => matchesToken(r, token));
-  targets.forEach(r => {
-    r.consultation = consultation;
-    r.status = nextStatus;
-    r.token = r.token || tokenOf(r);
-  });
-
-  if (!targets.length) {
-    // Demo rows aren't in the in-memory queue; the sheet still needs to print.
+  const target = patients.find(r => matchesToken(r, token));
+  if (!target) {
+    // Rows that never went through intake (static dashboard rows) still need to print.
     return res.json({ success: true, persisted: false, token, status: nextStatus, consultation });
   }
 
-  res.json({ success: true, persisted: true, token, status: nextStatus, consultation, record: targets[0] });
+  target.consultation = consultation;
+  target.status = nextStatus;
+  target.token = target.token || tokenOf(target);
+  persistPatients();
+  res.json({ success: true, persisted: true, token, status: nextStatus, consultation, record: target });
 });
 
-// ── GET /api/patients ─────────────────────────────────────────────────────────
+// ── GET /api/patients — newest first ──────────────────────────────────────────
 app.get('/api/patients', (req, res) => {
-  res.json(globalPatients);
+  res.json([...patients].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+});
+
+// ── DELETE /api/patients/:token — permanently removes a record ────────────────
+app.delete('/api/patients/:token', (req, res) => {
+  const index = patients.findIndex(r => matchesToken(r, req.params.token));
+  if (index === -1) return res.status(404).json({ success: false, error: 'Patient record not found' });
+  const [removed] = patients.splice(index, 1);
+  persistPatients();
+  console.log(`Deleted patient record ${tokenOf(removed)} (${removed.name})`);
+  res.json({ success: true, token: tokenOf(removed) });
+});
+
+// ── POST /api/patients/:token/documents — physician attaches a report to a record ─
+app.post('/api/patients/:token/documents', upload.single('document'), async (req, res) => {
+  const target = patients.find(r => matchesToken(r, req.params.token));
+  if (!target) return res.status(404).json({ success: false, error: 'Patient record not found' });
+  if (!req.file) return res.status(400).json({ success: false, error: 'document file is required' });
+
+  const newReport = await analyzeUpload(req.file);
+  // Re-find after the OCR await: the record may have been deleted meanwhile.
+  const record = patients.find(r => matchesToken(r, req.params.token));
+  if (!record) return res.status(404).json({ success: false, error: 'Patient record was deleted during upload' });
+
+  const priorReports = Array.isArray(record.documents?.reports) ? record.documents.reports : [];
+  record.documents = buildSessionRecord([...priorReports, newReport]);
+  persistPatients();
+  res.json({
+    success: true,
+    record,
+    report: { id: newReport.id, title: newReport.title, documentType: newReport.documentType },
+  });
 });
 
 // ── GET /api/doctor/queue — unified triage queue, P1→P4 then newest first ──────

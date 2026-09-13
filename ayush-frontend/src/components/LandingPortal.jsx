@@ -76,25 +76,27 @@ export default function LandingPortal() {
               </button>
             </article>
 
-            {/* 2 · Teleconsultation */}
+            {/* 2 · Telephony voice consultation */}
             <article className="group bg-surface-container-lowest rounded-3xl shadow-sm hover:shadow-lg ring-1 ring-surface-container-high hover:ring-primary/40 transition-all p-6 flex flex-col gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-secondary-container/40 text-on-secondary-container flex items-center justify-center text-[30px]">📱</div>
+              <div className="w-14 h-14 rounded-2xl bg-secondary-container/40 text-on-secondary-container flex items-center justify-center text-[30px]">📞</div>
               <div className="flex-1 flex flex-col gap-1.5">
                 <h3 className="font-title-lg text-title-lg text-on-surface font-bold leading-tight">
-                  Remote Teleconsultation
+                  📞 Telephony Voice Consultation
                 </h3>
-                <p className="font-title-md text-title-md text-primary font-semibold leading-tight">दूरस्थ टेली-परामर्श</p>
+                <p className="font-title-md text-title-md text-primary font-semibold leading-tight">टेली-परामर्श (वॉयस कॉल)</p>
                 <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed mt-1">
-                  Mobile video call · Zero app install · Doctor remote triage
+                  High-fidelity voice consultation. In live hospital deployment, this operates over standard
+                  cellular/PSTN telephone lines (IVR/Toll-Free) for patients without internet, currently
+                  operating via web-voice for presentation.
                 </p>
                 <div className="mt-2 flex items-center gap-3">
                   <div className="p-2 bg-white rounded-xl shadow-sm ring-1 ring-surface-container-high shrink-0">
                     <QRCodeSVG value={teleconsultUrl} size={92} level="M" />
                   </div>
                   <p className="font-label-sm text-label-sm text-on-surface-variant">
-                    Scan with your phone camera — the call opens in the mobile browser.
+                    Scan with your phone camera — the voice call opens in the mobile browser.
                     <br />
-                    <span className="text-primary font-semibold">Room {roomId}</span>
+                    <span className="text-primary font-semibold">Line {roomId}</span>
                   </p>
                 </div>
               </div>
@@ -102,8 +104,8 @@ export default function LandingPortal() {
                 onClick={() => navigate(`/teleconsult?room=${roomId}`)}
                 className="w-full px-5 py-3.5 rounded-2xl bg-surface-container-high text-on-surface font-label-lg text-label-lg hover:bg-surface-container transition-colors flex items-center justify-center gap-2"
               >
-                <span className="material-symbols-outlined text-[20px]">videocam</span>
-                Open Call on this Screen
+                <span className="material-symbols-outlined text-[20px]">call</span>
+                Start Voice Call on this Screen
               </button>
             </article>
 

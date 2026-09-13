@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam';
 import { KIOSK_LANGUAGES, DEFAULT_KIOSK_LANG, uiVariant, languageNative } from '../utils/languages';
 import { speechFor } from '../utils/kioskSpeech';
+import { cleanUtterance } from '../utils/utterance';
 
 const DOC_TYPE_PILL = {
   PRESCRIPTION: '📄 Prescription',
@@ -11,7 +12,14 @@ const DOC_TYPE_PILL = {
   MIXED: '📄🧪 Prescription + Lab',
 };
 
-const STAGES = ['name', 'ageGender', 'mobile', 'complaint', 'has_documents', 'agni', 'sleep', 'energy', 'history'];
+// Clinical dialogue: complaint (turn 1) → two Gemini adaptive questions (turns 2–3)
+// → document upload → synthesis. Exactly two follow-ups, never more.
+const STAGES = ['name', 'ageGender', 'mobile', 'complaint', 'followup1', 'followup2', 'has_documents'];
+const FOLLOWUP_STAGES = ['followup1', 'followup2'];
+const CLINICAL_STAGES = ['complaint', ...FOLLOWUP_STAGES];
+
+// Auto-lock an utterance once the patient has been quiet this long.
+const SILENCE_LOCK_MS = 1000;
 
 // Spoken prompts for every stage live in utils/kioskSpeech.js (all 11 languages).
 
@@ -25,8 +33,8 @@ function detectDocIntent(text) {
 const STAGE_LABEL = {
   name: { en: 'Name', hi: 'नाम' }, ageGender: { en: 'Age & Gender', hi: 'उम्र व लिंग' },
   mobile: { en: 'Mobile', hi: 'मोबाइल' }, complaint: { en: 'Complaint', hi: 'तकलीफ' },
-  has_documents: { en: 'Documents', hi: 'दस्तावेज़' }, agni: { en: 'Agni / Koshtha', hi: 'अग्नि / कोष्ठ' },
-  sleep: { en: 'Sleep & Stress', hi: 'निद्रा व मानस' }, energy: { en: 'Energy & Vitality', hi: 'बल व ऊर्जा' }, history: { en: 'Chronic History', hi: 'पुरानी बीमारी' },
+  followup1: { en: 'Question 1', hi: 'प्रश्न 1' }, followup2: { en: 'Question 2', hi: 'प्रश्न 2' },
+  has_documents: { en: 'Documents', hi: 'दस्तावेज़' },
 };
 
 const PRIORITY_CONFIG = {
@@ -41,10 +49,6 @@ const PRIORITY_CONFIG = {
 const KIOSK_CHIPS = {
   ageGender: { en: ['Male', 'Female', 'Other'], hi: ['पुरुष (Male)', 'महिला (Female)', 'अन्य (Other)'] },
   complaint: { en: ['Abdominal pain', 'Acidity / Heartburn', 'Joint pain', 'Headache & fatigue'], hi: ['पेट दर्द', 'खट्टी डकार व जलन', 'जोड़ों का दर्द', 'सिरदर्द व थकान'] },
-  agni: { en: ['Low appetite (Manda)', 'Normal (Sama)', 'Constipation (Krura)', 'Acidity (Amla)'], hi: ['भूख कम (Manda)', 'पाचन ठीक (Sama)', 'कब्ज (Krura)', 'खट्टी डकारें (Amla)'] },
-  sleep: { en: ['Sound Sleep', 'Disturbed Sleep', 'Insomnia / High Stress'], hi: ['गहरी नींद (Sound)', 'नींद में बाधा (Disturbed)', 'अनिद्रा व तनाव (Insomnia)'] },
-  energy: { en: ['Normal Energy', 'Sluggish / Lethargic', 'Severe Weakness'], hi: ['ऊर्जा सामान्य (Normal)', 'भारीपन व सुस्ती (Lethargy)', 'अत्यधिक कमजोरी (Fatigue)'] },
-  history: { en: ['No Pre-existing Conditions', 'Hypertension / High BP', 'Diabetes / Sugar', 'Respiratory / Allergy'], hi: ['कोई पुरानी बीमारी नहीं', 'उच्च रक्तचाप (BP)', 'मधुमेह (Diabetes)', 'सांस/एलर्जी'] },
 };
 
 function parseGender(text) {
@@ -53,17 +57,6 @@ function parseGender(text) {
   if (/\bmale\b|पुरुष|मर्द|लड़का|purush|mard|aadmi|man|boy/.test(tl)) return 'Male';
   if (/other|अन्य/.test(tl)) return 'Other';
   return 'Not specified';
-}
-function parseDigestion(text) {
-  const tl = text.toLowerCase();
-  let agni = 'Vishama';
-  if (/manda|कम|low|less|thoda|sluggish|भूख नहीं/.test(tl)) agni = 'Manda';
-  else if (/tikshna|तेज़|sharp|excessive|ज़्यादा|zyada|acid|खट्ट/.test(tl)) agni = 'Tikshna';
-  else if (/sama|ठीक|normal|fine|good|अच्छ/.test(tl)) agni = 'Sama';
-  let koshtha = 'Madhyama';
-  if (/krura|कब्ज|constipat|hard|कठोर/.test(tl)) koshtha = 'Krura';
-  else if (/mridu|loose|दस्त|soft|पतला/.test(tl)) koshtha = 'Mridu';
-  return { agni, koshtha };
 }
 
 export default function TouchlessKiosk() {
@@ -89,6 +82,9 @@ export default function TouchlessKiosk() {
   const [transcript, setTranscript] = useState('');   // patient's live transcript
   const [error, setError] = useState('');
   const [liveVolume, setLiveVolume] = useState(0);    // 0..1 live mic VU meter
+  const [silenceProgress, setSilenceProgress] = useState(0); // 0..1 through the 1s auto-lock window
+  const [voiceCaptured, setVoiceCaptured] = useState(false);  // utterance locked, now transcribing
+  const followupsRef = useRef([]);                    // [{ question, code, answer }] for the 2 adaptive turns
   const [voiceError, setVoiceError] = useState('');   // distinct API/mic error banner
   const [typedAnswer, setTypedAnswer] = useState('');
   const [docChoice, setDocChoice] = useState('none'); // 'none' | 'ask' | 'yes' (document inquiry stage)
@@ -118,6 +114,7 @@ export default function TouchlessKiosk() {
 
   // ── Voice primitives ─────────────────────────────────────────────────────────
   const speak = useCallback(async (text, code) => {
+    setVoiceCaptured(false);
     setBotStatus('speaking');
     setCaption(text);
     await sarvamTTS(text, code || selectedLangRef.current, {
@@ -135,17 +132,21 @@ export default function TouchlessKiosk() {
   }, [speak]);
 
   // Resolves to { status: 'ok'|'empty'|'error', text, code, msg }
-  const listen = useCallback(() => new Promise((resolve) => {
+  const listen = useCallback((stageKey) => new Promise((resolve) => {
     setBotStatus('listening');
     setTranscript('');
     setLiveVolume(0);
+    setSilenceProgress(0);
+    setVoiceCaptured(false);
     recordUntilSilence({
-      initialWaitMs: 5000,      // up to 5s to BEGIN speaking
-      trailingSilenceMs: 2000,  // stop 2s after they go quiet
-      maxRecordMs: 9000,        // hard safety cutoff
+      initialWaitMs: 5000,                   // up to 5s to BEGIN speaking
+      trailingSilenceMs: SILENCE_LOCK_MS,    // lock the utterance 1s after they go quiet
+      // Symptom descriptions run longer than a name or a phone number.
+      maxRecordMs: CLINICAL_STAGES.includes(stageKey) ? 15000 : 9000,
       langCode: selectedLangRef.current,
       onVolumeChange: (v) => setLiveVolume(v),
-      onStop: () => { setBotStatus('thinking'); setLiveVolume(0); },
+      onSilenceProgress: (p) => setSilenceProgress(p),
+      onStop: () => { setBotStatus('thinking'); setLiveVolume(0); setSilenceProgress(0); setVoiceCaptured(true); },
       onResult: (t) => resolve({ status: t ? 'ok' : 'empty', text: t }),
       onError: (code, msg) => resolve({ status: 'error', code, msg }),
     }).then((rec) => { recRef.current = rec; });
@@ -160,10 +161,11 @@ export default function TouchlessKiosk() {
     } else if (stageKey === 'mobile') {
       const d = text.replace(/\D/g, ''); f.mobile = d.length >= 10 ? d.slice(-10) : (d || 'N/A');
     } else if (stageKey === 'complaint') f.complaint = text;
-    else if (stageKey === 'agni') { const { agni, koshtha } = parseDigestion(text); f.agni = agni; f.koshtha = koshtha; }
-    else if (stageKey === 'sleep') f.sleep_stress = text;
-    else if (stageKey === 'energy') f.energy_lifestyle = text;
-    else if (stageKey === 'history') f.chronic_history = text;
+    else if (FOLLOWUP_STAGES.includes(stageKey)) {
+      const i = FOLLOWUP_STAGES.indexOf(stageKey);
+      const asked = followupsRef.current[i] || { question: speechFor(selectedLangRef.current, stageKey).text };
+      followupsRef.current[i] = { ...asked, answer: text };
+    }
     fieldsRef.current = f;
     setFields(f);
   }, []);
@@ -173,6 +175,9 @@ export default function TouchlessKiosk() {
     setBotStatus('thinking');
     setIsSubmitting(true);
     const f = fieldsRef.current;
+    const followups = followupsRef.current
+      .filter(fu => fu?.question && fu.answer)
+      .map(({ question, answer }) => ({ question, answer }));
     speakKey('done');
     try {
       const res = await fetch('/api/triage', {
@@ -180,8 +185,8 @@ export default function TouchlessKiosk() {
         body: JSON.stringify({
           patientId: `PK${Date.now()}`,
           name: f.name, age: f.age, gender: f.gender, phone: f.mobile,
-          symptoms: f.complaint, agni: f.agni, koshtha: f.koshtha,
-          sleep_stress: f.sleep_stress, energy_lifestyle: f.energy_lifestyle, chronic_history: f.chronic_history,
+          symptoms: f.complaint, followups,
+          triageSource: 'Voice Kiosk',
           sessionId, lang: selectedLangRef.current,
         }),
       });
@@ -194,7 +199,7 @@ export default function TouchlessKiosk() {
         id: `PK${Date.now()}`, name: f.name || 'Anonymous',
         triageLevel: 'P3', triageLabel: 'Moderate',
         chiefComplaint: f.complaint || 'General consultation',
-        agni: f.agni || 'Vishama', koshtha: f.koshtha || 'Madhyama', dosha: 'Tridosha',
+        agni: 'Vishama', koshtha: 'Madhyama', dosha: 'Tridosha',
         recommendation: 'Standard Ayurvedic consultation advised.',
       });
     } finally {
@@ -205,10 +210,12 @@ export default function TouchlessKiosk() {
 
   // ── Resumable stage machine (voice OR chip/text can advance any step) ──────────
   const isAlive = (token) => activeRef.current && stageTokenRef.current === token;
+  const stopRec = () => { if (recRef.current?.state === 'recording') recRef.current.stop(); };
 
   // acceptAnswer is the single entry point for BOTH voice results and chip/text taps
   const acceptAnswer = (stageKey, text) => {
-    const t = (text || '').trim();
+    // Filler words ("uhh", "actually") never reach the record.
+    const t = cleanUtterance(text) || (text || '').trim();
     if (!t) return;
     if (recRef.current?.state === 'recording') recRef.current.stop();
     stopSarvamAudio();
@@ -220,11 +227,42 @@ export default function TouchlessKiosk() {
     else submitTriage();
   };
 
+  // Asks Gemini for the next adaptive question from the complaint + prior answer.
+  // Falls back to a fixed clinical question so the kiosk never stalls on the network.
+  async function loadFollowup(stageKey, token) {
+    const i = FOLLOWUP_STAGES.indexOf(stageKey);
+    setBotStatus('thinking');
+    setTranscript('');
+    let asked = null;
+    try {
+      const res = await fetch('/api/adaptive-question', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          complaint: fieldsRef.current.complaint,
+          answers: followupsRef.current.slice(0, i).map(fu => ({ question: fu?.question, answer: fu?.answer })),
+          turn: i + 1,
+          language_code: selectedLangRef.current,
+        }),
+      });
+      const data = await res.json();
+      if (data?.question) asked = { question: data.question, code: data.language_code || 'en-IN' };
+    } catch (err) {
+      console.warn('[kiosk adaptive-question]', err.message);
+    }
+    if (!asked) {
+      const { text, code } = speechFor(selectedLangRef.current, stageKey);
+      asked = { question: text, code };
+    }
+    if (isAlive(token)) followupsRef.current[i] = { ...asked, answer: '' };
+  }
+
   async function askAndListen(stageKey, attempt, token) {
     if (!isAlive(token)) return;
-    await speakKey(attempt === 0 ? stageKey : 'reprompt');
+    const followup = followupsRef.current[FOLLOWUP_STAGES.indexOf(stageKey)];
+    if (attempt === 0 && followup?.question) await speak(followup.question, followup.code);
+    else await speakKey(attempt === 0 ? stageKey : 'reprompt');
     if (!isAlive(token)) return;
-    const r = await listen();
+    const r = await listen(stageKey);
     if (!isAlive(token)) return; // a chip/text tap already advanced the stage
     if (r.status === 'ok') { acceptAnswer(stageKey, r.text); return; }
     if (r.status === 'error') {
@@ -250,6 +288,10 @@ export default function TouchlessKiosk() {
     const token = ++stageTokenRef.current;
     stageRef.current = stageKey; setStage(stageKey);
     if (stageKey === 'has_documents') { await runDocStage(token); return; }
+    if (FOLLOWUP_STAGES.includes(stageKey)) {
+      await loadFollowup(stageKey, token);
+      if (!isAlive(token)) return;
+    }
     await askAndListen(stageKey, 0, token);
   }
 
@@ -266,7 +308,7 @@ export default function TouchlessKiosk() {
     setTranscript('');
     await speakKey('documents');
     if (!isAlive(token)) return;
-    const r = await listen();
+    const r = await listen('has_documents');
     if (!isAlive(token)) return;
     if (r.status === 'ok') {
       const intent = detectDocIntent(r.text);
@@ -332,9 +374,10 @@ export default function TouchlessKiosk() {
     if (recRef.current?.state === 'recording') recRef.current.stop();
     fieldsRef.current = { name: '', age: '', gender: '', mobile: '', complaint: '', agni: '', koshtha: '', sleep_stress: '', energy_lifestyle: '', chronic_history: '' };
     setFields(fieldsRef.current);
+    followupsRef.current = [];
     setTriageResult(null); setStage('name'); stageRef.current = 'name'; stageTokenRef.current = 0;
     setCaption(''); setTranscript(''); setBotStatus('idle'); setStarted(false);
-    setLiveVolume(0); setVoiceError(''); setTypedAnswer(''); setDocChoice('none'); docAdvancedRef.current = false;
+    setLiveVolume(0); setSilenceProgress(0); setVoiceCaptured(false); setVoiceError(''); setTypedAnswer(''); setDocChoice('none'); docAdvancedRef.current = false;
     // A shared kiosk must not carry one patient's language over to the next.
     setSelectedLang(DEFAULT_KIOSK_LANG); selectedLangRef.current = DEFAULT_KIOSK_LANG;
   };
@@ -446,9 +489,27 @@ export default function TouchlessKiosk() {
                     ))}
                   </div>
                   <span className="font-label-sm text-label-sm text-green-600">
-                    {liveVolume > 0.05 ? (lang === 'hi' ? '🎙️ आवाज़ मिल रही है' : '🎙️ Mic is picking up sound') : (lang === 'hi' ? 'बोलिए…' : 'Speak now…')}
+                    {silenceProgress > 0.05
+                      ? (lang === 'hi' ? '⏸️ रुकने पर 1 सेकंड में अपने आप भेजा जाएगा' : '⏸️ Pause detected — sending in 1s')
+                      : liveVolume > 0.05 ? (lang === 'hi' ? '🎙️ आवाज़ मिल रही है' : '🎙️ Mic is picking up sound') : (lang === 'hi' ? 'बोलिए…' : 'Speak now…')}
                   </span>
+                  {/* 1-second auto-lock countdown: fills while the patient is quiet */}
+                  <div className="w-40 h-1 rounded-full bg-green-500/15 overflow-hidden" aria-hidden="true">
+                    <div className="h-full bg-green-500 transition-[width] duration-100 ease-linear" style={{ width: `${Math.round(silenceProgress * 100)}%` }} />
+                  </div>
                 </div>
+              )}
+              {botStatus === 'thinking' && voiceCaptured && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-800 font-label-md text-label-md">
+                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                  {lang === 'hi' ? 'आवाज़ रिकॉर्ड हो गई — प्रोसेस हो रहा है' : 'Voice captured — processing'}
+                </span>
+              )}
+              {botStatus === 'thinking' && !voiceCaptured && FOLLOWUP_STAGES.includes(stage) && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary font-label-md text-label-md">
+                  <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                  {lang === 'hi' ? 'AI वैद्य अगला प्रश्न तैयार कर रहे हैं…' : 'AI Vaidya is preparing a follow-up question…'}
+                </span>
               )}
 
               {/* Live captions */}
@@ -721,7 +782,7 @@ export default function TouchlessKiosk() {
 // ── Triage token confirmation card ──────────────────────────────────────────────
 function TokenCard({ result, lang, onReset, onDoctor }) {
   const cfg = PRIORITY_CONFIG[result.triageLevel] || PRIORITY_CONFIG.P3;
-  const token = result.id ? `AYUSH-${String(result.id).slice(-6).toUpperCase()}` : 'AYUSH-000000';
+  const token = result.token || (result.id ? `AYUSH-${String(result.id).slice(-6).toUpperCase()}` : 'AYUSH-000000');
   return (
     <div className="w-full max-w-lg flex flex-col gap-5">
       <div className="flex items-center gap-3 justify-center text-primary">

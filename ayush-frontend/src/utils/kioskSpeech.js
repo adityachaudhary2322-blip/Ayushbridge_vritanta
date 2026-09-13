@@ -120,6 +120,16 @@ export const KIOSK_PROMPTS = {
     'pa-IN': 'ਕੀ ਤੁਹਾਨੂੰ ਪਹਿਲਾਂ ਤੋਂ ਕੋਈ ਬਿਮਾਰੀ ਹੈ — ਸ਼ੂਗਰ, ਬਲੱਡ ਪ੍ਰੈਸ਼ਰ, ਥਾਇਰਾਇਡ, ਦਮਾ ਜਾਂ ਦਵਾਈ ਦੀ ਐਲਰਜੀ?',
     'od-IN': 'ଆପଣଙ୍କର ପୂର୍ବରୁ କୌଣସି ରୋଗ ଅଛି କି — ମଧୁମେହ, ଉଚ୍ଚ ରକ୍ତଚାପ, ଥାଇରଏଡ୍, ଦମା ବା ଔଷଧ ଆଲର୍ଜି?',
   },
+  // Offline stand-ins for the two Gemini adaptive questions (used only if the
+  // backend is unreachable). Other languages fall back to the English line.
+  followup1: {
+    'hi-IN': 'यह तकलीफ कब और कैसे शुरू हुई — क्या खाने के बाद या किसी खास समय पर बढ़ती है?',
+    'en-IN': 'When and how did this problem start — do meals or a particular time of day make it worse?',
+  },
+  followup2: {
+    'hi-IN': 'क्या इस तकलीफ से आपकी नींद या पेट साफ होने में कोई बदलाव आया है?',
+    'en-IN': 'Has this problem affected your sleep or bowel movements, and does anything make it worse?',
+  },
   documents: {
     'hi-IN': 'क्या आपके पास कोई पुरानी डॉक्टर की पर्ची या लैब रिपोर्ट है जिसे आप अपलोड करना चाहते हैं?',
     'en-IN': 'Do you have any past prescription or lab test report you would like to scan?',
