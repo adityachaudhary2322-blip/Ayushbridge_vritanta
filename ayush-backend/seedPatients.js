@@ -49,7 +49,7 @@ function seedPatients() {
   return [
     opdRecord({
       token: 'OPD-2026-101',
-      name: 'Rajesh Kumar Sharma', age: '48', gender: 'Male', phone: '9876543210',
+      name: 'Rajesh Kumar Sharma', age: '48', gender: 'Male', phone: '9876543210', abhaAddress: 'rajeshsharma101@abdm',
       timestamp: hoursAgo(3),
       chiefComplaint: 'Epigastric burning & acid regurgitation for 3 weeks',
       symptoms: 'Burning sensation in the upper abdomen with sour belching and acid coming up into the throat for 3 weeks, worse after spicy meals and late dinners.',
@@ -71,7 +71,7 @@ function seedPatients() {
     }),
     opdRecord({
       token: 'OPD-2026-102',
-      name: 'Sunita Devi', age: '54', gender: 'Female', phone: '9812345678',
+      name: 'Sunita Devi', age: '54', gender: 'Female', phone: '9812345678', abhaAddress: 'sunitadevi102@abdm',
       timestamp: hoursAgo(2),
       chiefComplaint: 'Bilateral knee joint pain and morning stiffness (Janu Sandhigata Vata)',
       symptoms: 'Pain in both knees with morning stiffness lasting about 30 minutes, difficulty climbing stairs, and mild swelling for 2 months.',
@@ -93,7 +93,7 @@ function seedPatients() {
     }),
     opdRecord({
       token: 'OPD-2026-103',
-      name: 'Amit Verma', age: '29', gender: 'Male', phone: '9701234567',
+      name: 'Amit Verma', age: '29', gender: 'Male', phone: '9701234567', abhaAddress: 'amitverma103@abdm',
       timestamp: hoursAgo(1),
       chiefComplaint: 'Allergic rhinitis with productive morning cough (Kaphaja Kasa)',
       symptoms: 'Sneezing and watery eyes followed by nasal congestion and a productive cough with white sputum, worst in the early morning, for 10 days.',

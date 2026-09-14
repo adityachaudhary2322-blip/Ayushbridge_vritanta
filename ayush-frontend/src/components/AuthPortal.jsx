@@ -60,7 +60,7 @@ export default function AuthPortal({ onNavigate }) {
               <div>
                 <div className="flex items-center gap-2.5">
                   <h1 className="font-headline-md text-headline-md text-on-surface tracking-tight">AYUSH CareBridge</h1>
-                  <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-label-sm text-label-sm">M2 Ready</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-700 text-white font-label-sm text-label-sm">M2 Ready</span>
                 </div>
                 <p className="font-body-md text-body-md text-on-surface-variant mt-0.5">Integrative AI Triage &amp; Clinical Intake Portal</p>
               </div>
@@ -140,7 +140,7 @@ export default function AuthPortal({ onNavigate }) {
                     </p>
                   </div>
                   <button
-                    className="w-full py-3.5 px-6 rounded-xl bg-primary-container hover:bg-primary text-on-primary-container font-label-lg text-label-lg shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 group"
+                    className="w-full py-3.5 px-6 rounded-xl bg-primary-container hover:bg-emerald-700 text-white-container font-label-lg text-label-lg shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 group"
                     type="submit"
                     disabled={otpLoading}
                   >
@@ -314,7 +314,7 @@ export default function AuthPortal({ onNavigate }) {
             </div>
           </div>
           <div className="bg-surface-container-high rounded-2xl p-5 sm:p-6 flex items-start gap-4 shadow-sm relative overflow-hidden">
-            <div className="w-12 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center flex-shrink-0 shadow-sm">
+            <div className="w-12 h-12 rounded-xl bg-emerald-700 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
               <span className="material-symbols-outlined text-[24px]">medication_liquid</span>
             </div>
             <div>

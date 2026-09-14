@@ -1,43 +1,49 @@
 // Chronological disease progression timeline (oldest → present).
-// Two renderers share one status palette: Tailwind for the dashboard, and inline
-// styles for the A4 sheet so html2canvas captures borders and fills exactly.
+// Two renderers share one status palette: Tailwind for the dark workstation, and
+// inline styles for the A4 sheet so html2canvas captures borders and fills exactly.
 
 const TIMELINE_STATUS = {
-  Mild: { chip: 'bg-blue-100 text-blue-800', dot: 'bg-blue-500', print: '#1a73e8' },
-  Moderate: { chip: 'bg-teal-100 text-teal-800', dot: 'bg-teal-600', print: '#00796b' },
-  Worsening: { chip: 'bg-amber-100 text-amber-900', dot: 'bg-amber-500', print: '#e37400' },
-  Acute: { chip: 'bg-red-100 text-red-800', dot: 'bg-red-600', print: '#c5221f' },
-  Improving: { chip: 'bg-green-100 text-green-800', dot: 'bg-green-600', print: '#188038' },
-  Chronic: { chip: 'bg-violet-100 text-violet-800', dot: 'bg-violet-600', print: '#6750a4' },
+  Mild: { chip: 'bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/30', dot: 'bg-sky-400', print: '#0369a1' },
+  Moderate: { chip: 'bg-stone-500/15 text-stone-300 ring-1 ring-stone-500/40', dot: 'bg-stone-400', print: '#57534e' },
+  Worsening: { chip: 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-600/40', dot: 'bg-amber-500', print: '#b45309' },
+  Acute: { chip: 'bg-rose-600/15 text-rose-300 ring-1 ring-rose-500/40', dot: 'bg-rose-500', print: '#9f1239' },
+  Improving: { chip: 'bg-emerald-600/15 text-emerald-400 ring-1 ring-emerald-600/30', dot: 'bg-emerald-500', print: '#047857' },
+  Chronic: { chip: 'bg-violet-500/10 text-violet-300 ring-1 ring-violet-500/30', dot: 'bg-violet-400', print: '#6d28d9' },
 };
 
 const styleFor = (status) => TIMELINE_STATUS[status] || TIMELINE_STATUS.Moderate;
 
-export default function DiseaseTimeline({ events }) {
-  if (!Array.isArray(events) || !events.length) return null;
+export default function DiseaseTimeline({ events, bare = false }) {
+  if (!Array.isArray(events) || !events.length) {
+    return bare ? <p className="text-sm text-stone-500">No progression details recorded at intake.</p> : null;
+  }
+  const list = (
+    <ol className="relative">
+      {events.map((e, i) => {
+        const st = styleFor(e.status);
+        const last = i === events.length - 1;
+        return (
+          <li key={i} className="relative pl-6 pb-4 last:pb-0">
+            {!last && <span className="absolute left-[5px] top-3.5 bottom-0 w-px bg-amber-600/40" aria-hidden="true" />}
+            <span className={`absolute left-0 top-1.5 w-[11px] h-[11px] rounded-full ring-2 ring-stone-900 ${st.dot}`} aria-hidden="true" />
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-xs font-semibold tabular-nums text-stone-300">{e.timeframe}</span>
+              <span className={`px-1.5 py-px rounded text-[10px] font-bold uppercase tracking-wide ${st.chip}`}>{e.status}</span>
+            </div>
+            <p className="text-sm leading-snug text-stone-400 mt-0.5">{e.event}</p>
+          </li>
+        );
+      })}
+    </ol>
+  );
+  if (bare) return list;
   return (
-    <div className="rounded-xl bg-surface-container-low p-3">
-      <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide flex items-center gap-1.5">
-        <span className="material-symbols-outlined text-primary text-[15px]">timeline</span>
+    <div className="rounded-xl bg-stone-900/90 border border-stone-800 p-3">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-500 flex items-center gap-1.5 mb-2.5">
+        <span className="material-symbols-outlined text-[15px]">timeline</span>
         📅 Disease Progression Timeline / रोग प्रगति समय-रेखा
       </span>
-      <ol className="mt-2.5 relative">
-        {events.map((e, i) => {
-          const st = styleFor(e.status);
-          const last = i === events.length - 1;
-          return (
-            <li key={i} className="relative pl-6 pb-3 last:pb-0">
-              {!last && <span className="absolute left-[5px] top-3 bottom-0 w-0.5 bg-outline-variant/60" aria-hidden="true" />}
-              <span className={`absolute left-0 top-1 w-3 h-3 rounded-full ring-2 ring-surface-container-lowest ${st.dot}`} aria-hidden="true" />
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="font-label-md text-label-md text-on-surface font-semibold">{e.timeframe}</span>
-                <span className={`px-2 py-0.5 rounded-full font-label-sm text-label-sm font-semibold ${st.chip}`}>{e.status}</span>
-              </div>
-              <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">{e.event}</p>
-            </li>
-          );
-        })}
-      </ol>
+      {list}
     </div>
   );
 }
@@ -57,12 +63,12 @@ export function PrintDiseaseTimeline({ events }) {
             {/* Node + connector drawn as boxes (no absolute positioning) so html2canvas never misplaces them. */}
             <div style={{ width: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ width: 12, height: 12, borderRadius: 6, background: st.print, border: '2px solid #fff', boxShadow: `0 0 0 1px ${st.print}`, marginTop: 3, boxSizing: 'border-box' }} />
-              {!last && <div style={{ width: 2, flex: 1, minHeight: 16, background: '#c4c7c5', marginTop: 2 }} />}
+              {!last && <div style={{ width: 2, flex: 1, minHeight: 16, background: '#d6d3d1', marginTop: 2 }} />}
             </div>
-            <div style={{ flex: 1, border: '1px solid #e0e0e0', borderLeft: `3px solid ${st.print}`, borderRadius: 5, padding: '5px 10px', marginBottom: last ? 0 : 8, background: '#fafafa' }}>
+            <div style={{ flex: 1, border: '1px solid #e7e5e4', borderLeft: `3px solid ${st.print}`, borderRadius: 4, padding: '5px 10px', marginBottom: last ? 0 : 8, background: '#fcfbf9' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <strong style={{ fontSize: 12 }}>{e.timeframe}</strong>
-                <span style={{ background: st.print, color: '#fff', borderRadius: 12, padding: '1px 9px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{e.status}</span>
+                <span style={{ border: `1px solid ${st.print}`, color: st.print, borderRadius: 10, padding: '0 8px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{e.status}</span>
               </div>
               <div style={{ fontSize: 11.5, color: '#333', marginTop: 2 }}>{e.event}</div>
             </div>

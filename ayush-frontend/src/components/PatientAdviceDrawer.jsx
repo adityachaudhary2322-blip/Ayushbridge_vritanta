@@ -173,7 +173,7 @@ export default function PatientAdviceDrawer({
             </div>
           ) : (
             <div className="w-full bg-surface-container-low rounded-2xl p-4 shadow-sm flex items-start gap-3 border border-surface-container-highest">
-              <div className="w-9 h-9 rounded-xl bg-primary text-on-primary flex items-center justify-center flex-shrink-0 shadow-sm">
+              <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
                 <span className="material-symbols-outlined text-[20px]">check_circle</span>
               </div>
               <div className="flex flex-col">
@@ -206,7 +206,7 @@ export default function PatientAdviceDrawer({
                 href={zoomUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-on-primary font-label-md text-label-md shadow-sm hover:bg-primary-container transition-all"
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 text-white font-label-md text-label-md shadow-sm hover:bg-emerald-600 transition-all"
               >
                 <span className="material-symbols-outlined text-[18px]">video_call</span>
                 <span>{t.joinZoom}</span>
@@ -317,7 +317,7 @@ export default function PatientAdviceDrawer({
           {onClose && (
             <button
               onClick={onClose}
-              className="px-5 py-2 rounded-xl bg-primary text-on-primary font-label-md text-label-md hover:bg-primary-container transition-all shadow-sm flex items-center gap-1"
+              className="px-5 py-2 rounded-xl bg-emerald-700 text-white font-label-md text-label-md hover:bg-emerald-600 transition-all shadow-sm flex items-center gap-1"
             >
               <span>{t.closeBtn}</span>
             </button>

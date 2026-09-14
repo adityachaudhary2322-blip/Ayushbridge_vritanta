@@ -6,7 +6,7 @@
  * /api/consultation/save.
  */
 
-export const FORMULATIONS = ['Tablet', 'Capsule', 'Churna', 'Kwath', 'Syrup', 'Ointment', 'Other'];
+export const FORMULATIONS = ['Vati', 'Tablet', 'Capsule', 'Churna', 'Kwath', 'Syrup', 'Ointment', 'Other'];
 
 export const TIMINGS = [
   'Before Food / भोजन से पहले',

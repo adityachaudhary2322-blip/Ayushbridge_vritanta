@@ -4,19 +4,28 @@ import { filledMedications, patientToken } from '../utils/consultation';
 import { PrintDiseaseTimeline } from './DiseaseTimeline';
 import { AYUSH_PILLARS, assessmentOf, aiAssessmentOf } from '../utils/ayushPillars';
 
-// National AYUSH print palette (Tailwind orange-500 / emerald-600).
-const SAFFRON = '#f97316';
-const EMERALD = '#059669';
+// Printable A4 "OPD Clinical Record" — Government of India / Ministry of AYUSH format.
+// Rendered in an overlay; window.print() + @media print CSS isolate the sheet, and
+// html2pdf rasterises the same DOM. Inline styles only, so both pipelines agree.
 
-// Printable A4 "Combined Total Case History Sheet" — Ministry of AYUSH format.
-// Rendered in an overlay; window.print() + @media print CSS isolate the sheet.
+// Print palette: deep emerald + burnished brass rules on white, 1px stone borders, no black fills.
+const EMERALD = '#065f46';
+const BRASS = '#b45309';
+const RULE = '#d6d3d1';
+const INK = '#1c1917';
+const MUTED = '#57534e';
 
 const PRIORITY_TAG = {
-  P1: { bg: '#b3261e', label: 'Critical' },
-  P2: { bg: '#e8710a', label: 'Urgent' },
-  P3: { bg: '#1a73e8', label: 'Moderate' },
-  P4: { bg: EMERALD, label: 'Routine' },
+  P1: { color: '#9f1239', label: 'Critical' },
+  P2: { color: '#b45309', label: 'Urgent' },
+  P3: { color: '#44403c', label: 'Moderate' },
+  P4: { color: '#047857', label: 'Routine' },
 };
+
+const cell = { border: `1px solid ${RULE}`, padding: '5px 8px', verticalAlign: 'top' };
+const labelCell = { ...cell, width: '18%', background: '#fafaf9', color: MUTED, fontWeight: 600, fontSize: 11 };
+const thCell = { ...cell, textAlign: 'left', background: '#fafaf9', color: EMERALD, fontWeight: 700, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.3 };
+const ruled = (n) => Array.from({ length: n }, (_, i) => <div key={i} style={{ borderBottom: '1px dashed #a8a29e', height: 22 }} />);
 
 function fmt(ts) {
   if (!ts) return '—';
@@ -24,26 +33,49 @@ function fmt(ts) {
   catch { return String(ts); }
 }
 
-function Section({ n, title, children }) {
+function fmtDate(value) {
+  if (!value) return '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  return new Date(`${value}T00:00:00`).toLocaleDateString('en-IN', { dateStyle: 'medium' });
+}
+
+const clean = (v) => (v && v !== 'N/A' && v !== 'None' ? v : '');
+
+function Section({ n, title, hi, children }) {
   return (
-  <div className="pdf-block" style={{ marginTop: 14 }}>
-    <div style={{ background: '#fff4e6', borderLeft: `4px solid ${SAFFRON}`, padding: '5px 10px', fontWeight: 700, fontSize: 12.5, color: '#111', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-      {n}. {title}
+    <div className="pdf-block" style={{ marginTop: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, borderBottom: `1px solid ${BRASS}`, paddingBottom: 3 }}>
+        <span style={{ color: BRASS, fontWeight: 800, fontSize: 12 }}>{n}.</span>
+        <span style={{ color: EMERALD, fontWeight: 800, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>{title}</span>
+        {hi && <span style={{ color: MUTED, fontSize: 11, fontFamily: "'Source Serif 4', Georgia, serif" }}>· {hi}</span>}
+      </div>
+      <div style={{ padding: '7px 0 0', fontSize: 12, color: INK, lineHeight: 1.5 }}>{children}</div>
     </div>
-    <div style={{ padding: '8px 4px', fontSize: 12.5, color: '#1a1a1a', lineHeight: 1.5 }}>{children}</div>
-  </div>
   );
 }
 
-function Row({ label, value }) {
+/** Two-column key/value table: [[label, value], [label, value]] per row, or a single full-width pair. */
+function KvTable({ rows }) {
   return (
-  <div style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
-    <span style={{ minWidth: 150, color: '#555', fontWeight: 600 }}>{label}</span>
-    <span style={{ flex: 1, color: '#111' }}>{value || '—'}</span>
-  </div>
+    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 11.5 }}>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr key={i}>
+            {row.length === 1 ? (
+              <><td style={labelCell}>{row[0][0]}</td><td style={cell} colSpan={3}>{row[0][1] || '—'}</td></>
+            ) : row.map(([k, v]) => (
+              <FragmentPair key={k} k={k} v={v} />
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
+function FragmentPair({ k, v }) {
+  return (<><td style={labelCell}>{k}</td><td style={{ ...cell, width: '32%' }}>{v || '—'}</td></>);
+}
 
 export default function CaseHistorySheet({ patient, onClose, autoDownload = false }) {
   const [exporting, setExporting] = useState(false);
@@ -83,7 +115,7 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
     }
   }, [patient, token]);
 
-  // Opened straight from the queue's "Save PDF" button — export once, on paint.
+  // Opened straight from the workstation's "Download PDF" button — export once, on paint.
   useEffect(() => {
     if (!autoDownload || autoRanRef.current || !patient) return undefined;
     autoRanRef.current = true;
@@ -97,13 +129,17 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
   const tag = PRIORITY_TAG[p.triageLevel] || PRIORITY_TAG.P3;
   const pillars = assessmentOf(p);
   const aiPillars = aiAssessmentOf(p);
-  const agni = pillars.agni || '—';
-  const koshtha = pillars.koshtha || '—';
   const consult = p.consultation || null;
   const rx = filledMedications(consult?.prescription);
+  const correlation = clean(p.diagnosticCorrelation) || clinical.correlation;
+  const priorityBadge = (
+    <span style={{ display: 'inline-block', border: `1.5px solid ${tag.color}`, color: tag.color, borderRadius: 4, padding: '1px 8px', fontWeight: 800, fontSize: 11 }}>
+      {p.triageLevel || 'P3'} — {p.triageLabel || tag.label}{p.surgicalAlert ? ' · SURGICAL ALERT' : ''}
+    </span>
+  );
 
   return (
-    <div className="fixed inset-0 z-[300] bg-black/70 flex items-start justify-center overflow-auto p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[300] bg-black/80 flex items-start justify-center overflow-auto p-4" onClick={onClose}>
       {/* Print isolation styles */}
       <style>{`
         /* Badge fills and table rules must survive both the print pipeline and
@@ -137,18 +173,18 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
         <button
           onClick={downloadPdf}
           disabled={exporting}
-          className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-label-md text-label-md shadow-md hover:bg-primary-container transition-all flex items-center gap-1.5 disabled:opacity-70"
+          className="px-4 py-2 rounded-md bg-amber-600 hover:bg-amber-500 text-stone-950 text-sm font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-70"
         >
           <span className={`material-symbols-outlined text-[18px] ${exporting ? 'animate-spin' : ''}`}>
             {exporting ? 'progress_activity' : 'download'}
           </span>
           {exporting ? 'Generating PDF…' : '📥 Save / Download PDF (पीडीएफ डाउनलोड)'}
         </button>
-        <button onClick={() => window.print()} className="px-4 py-2.5 rounded-xl bg-surface-container-highest text-on-surface font-label-md text-label-md shadow-md hover:bg-surface-container transition-colors flex items-center gap-1.5">
+        <button onClick={() => window.print()} className="px-3.5 py-2 rounded-md border border-stone-600 bg-stone-900 text-stone-200 hover:bg-stone-800 text-sm font-semibold flex items-center gap-1.5 transition-colors">
           <span className="material-symbols-outlined text-[18px]">print</span>
           Print
         </button>
-        <button onClick={onClose} className="px-4 py-2.5 rounded-xl bg-surface-container-highest text-on-surface font-label-md text-label-md shadow-md hover:bg-surface-container transition-colors flex items-center gap-1.5">
+        <button onClick={onClose} className="px-3.5 py-2 rounded-md border border-stone-600 bg-stone-900 text-stone-200 hover:bg-stone-800 text-sm font-semibold flex items-center gap-1.5 transition-colors">
           <span className="material-symbols-outlined text-[18px]">close</span>
           Close
         </button>
@@ -162,90 +198,72 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
           width: '210mm',
           minHeight: exporting ? 0 : '297mm',
           background: '#fff',
-          color: '#111',
-          padding: exporting ? 0 : '16mm',
+          color: INK,
+          padding: exporting ? 0 : '14mm',
           boxSizing: 'border-box',
-          boxShadow: exporting ? 'none' : '0 10px 40px rgba(0,0,0,0.4)',
-          fontFamily: "'Inter', system-ui, sans-serif",
+          boxShadow: exporting ? 'none' : '0 10px 40px rgba(0,0,0,0.5)',
+          fontFamily: "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
           margin: exporting ? 0 : '8px 0',
         }}
       >
-        {/* Official header — saffron → emerald bar, saffron rule */}
-        <div style={{ height: 6, borderRadius: 3, background: `linear-gradient(90deg, ${SAFFRON} 0%, ${SAFFRON} 45%, ${EMERALD} 55%, ${EMERALD} 100%)`, marginBottom: 10 }} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `2px solid ${SAFFRON}`, paddingBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 46, height: 46, borderRadius: 10, background: SAFFRON, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 22 }}>आ</div>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#111' }}>AyushBridge — Clinical Intake Summary</div>
-              <div style={{ fontSize: 11, color: '#555' }}>Ministry of AYUSH · Government of India · Combined Total Case History Sheet</div>
-              <div style={{ marginTop: 3, display: 'inline-block', background: EMERALD, color: '#fff', borderRadius: 12, padding: '1px 9px', fontSize: 10, fontWeight: 700 }}>
-                AYUSH Triage · Dosha · Agni · Koshtha
+        {/* ── Government header with double emerald / brass rules ── */}
+        <div style={{ borderTop: `3px double ${EMERALD}`, paddingTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 24, border: `2px solid ${BRASS}`, color: BRASS, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 22, fontFamily: "'Source Serif 4', Georgia, serif" }}>आ</div>
+              <div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTED, letterSpacing: 1.2 }}>भारत सरकार · GOVERNMENT OF INDIA</div>
+                <div style={{ fontSize: 15.5, fontWeight: 800, color: EMERALD, letterSpacing: 0.4 }}>MINISTRY OF AYUSH — OPD CLINICAL RECORD</div>
+                <div style={{ fontSize: 11, color: MUTED, fontFamily: "'Source Serif 4', Georgia, serif" }}>राष्ट्रीय आयुर्वेद संस्थान · National AYUSH OPD Portal · OPD-Room 4B</div>
               </div>
             </div>
-          </div>
-          <div style={{ textAlign: 'right', fontSize: 11, color: '#333' }}>
-            <div><strong>OPD Token:</strong> <span style={{ color: '#c2410c', fontWeight: 800 }}>{token}</span></div>
-            <div><strong>Generated:</strong> {fmt(p.timestamp)}</div>
-            <div><strong>Intake:</strong> {p.triageSource || 'Voice Kiosk'}</div>
-            <div style={{ marginTop: 4, display: 'inline-block', background: tag.bg, color: '#fff', padding: '2px 10px', borderRadius: 20, fontWeight: 700 }}>
-              {p.triageLevel} — {p.triageLabel || tag.label}
-            </div>
+            <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
+              <tbody>
+                <tr><td style={{ ...labelCell, width: 'auto' }}>OPD Token</td><td style={{ ...cell, fontWeight: 800, color: BRASS }}>{token}</td></tr>
+                <tr><td style={{ ...labelCell, width: 'auto' }}>Record Date</td><td style={cell}>{fmt(p.timestamp)}</td></tr>
+                <tr><td style={{ ...labelCell, width: 'auto' }}>Triage</td><td style={cell}>{priorityBadge}</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
+        <div style={{ marginTop: 8, borderTop: `3px double ${BRASS}` }} />
 
-        <Section n={1} title="Patient Demographics, ABHA & Contact">
-          <Row label="Full Name" value={p.name} />
-          <Row label="Age / Gender" value={`${p.age || '—'} / ${p.gender || '—'}`} />
-          <Row label="Mobile Number" value={p.phone} />
-          <Row label="ABHA / ABDM ID" value={p.abhaId || 'Not linked at intake'} />
-          <Row label="Registration Time" value={fmt(p.timestamp)} />
-          <Row label="Patient ID" value={p.id} />
+        {/* 1 */}
+        <Section n={1} title="Demographics & Triage Severity" hi="रोगी विवरण">
+          <KvTable rows={[
+            [['Full Name', <strong key="n">{p.name}</strong>], ['Patient ID', p.id]],
+            [['Age / Gender', `${clean(p.age) || '—'} / ${clean(p.gender) || '—'}`], ['Mobile', clean(p.phone)]],
+            [['ABHA Address', p.abhaAddress || p.abhaId || 'Not linked at intake'], ['Intake Channel', p.triageSource || 'Voice Kiosk']],
+            [['Triage Severity', priorityBadge]],
+            [['Chief Complaint', <strong key="c">{p.chiefComplaint}</strong>]],
+            [['Reported Symptoms', p.symptoms]],
+            [['Chronic History', clean(p.chronic_history) || 'None reported'], ['Red Flags', clean(p.redFlags) || (p.surgicalAlert ? 'Surgical alert flagged' : 'None')]],
+            ...(Array.isArray(p.followups) ? p.followups.map((f, i) => [[`Follow-up Q${i + 1}`, `${f.question} — ${f.answer}`]]) : []),
+          ]} />
         </Section>
 
-        <Section n={2} title="Chief Complaints & Urgency Priority">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 0 8px' }}>
-            <span style={{ background: tag.bg, color: '#fff', padding: '4px 14px', borderRadius: 20, fontWeight: 800, fontSize: 13 }}>
-              {p.triageLevel} — {p.triageLabel || tag.label}
-            </span>
-            <span style={{ fontSize: 11, color: '#555' }}>Assigned triage priority</span>
-          </div>
-          <Row label="Chief Complaint" value={p.chiefComplaint} />
-          <Row label="Reported Symptoms" value={p.symptoms} />
-          <Row label="Chronic History (Purva Vyadhi)" value={(p.chronic_history && p.chronic_history !== 'N/A') ? p.chronic_history : 'None reported'} />
-          <Row label="Red Flags / Alerts" value={(p.redFlags && p.redFlags !== 'None') ? p.redFlags : (p.surgicalAlert ? 'Surgical alert flagged' : 'None')} />
-          {Array.isArray(p.followups) && p.followups.map((f, i) => (
-            <Row key={i} label={`Follow-up Q${i + 1}`} value={`${f.question} — ${f.answer}`} />
-          ))}
-        </Section>
-
-        <Section n={3} title="📅 Disease Progression Timeline / रोग प्रगति समय-रेखा">
+        {/* 2 */}
+        <Section n={2} title="Disease Progression Timeline" hi="रोग प्रगति समय-रेखा">
           <PrintDiseaseTimeline events={p.diseaseTimeline} />
         </Section>
 
-        <Section n={4} title="AYUSH Rogi Pariksha — 3 Core Pillars">
+        {/* 3 */}
+        <Section n={3} title="Verified 3-Pillar AYUSH Pariksha" hi="दोष · अग्नि · कोष्ठ">
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 11.5 }}>
             <thead>
-              <tr>
-                {AYUSH_PILLARS.map(({ key, label, hi }) => (
-                  <th key={key} style={{ textAlign: 'left', padding: '6px 8px', border: `1px solid ${SAFFRON}`, background: '#fff4e6', color: '#9a3412', fontWeight: 800 }}>
-                    {label} · {hi}
-                  </th>
-                ))}
-              </tr>
+              <tr>{AYUSH_PILLARS.map(({ key, label, hi }) => <th key={key} style={thCell}>{label} · {hi}</th>)}</tr>
             </thead>
             <tbody>
               <tr>
                 {AYUSH_PILLARS.map(({ key }) => {
                   const edited = pillars[key] && pillars[key] !== aiPillars[key];
                   return (
-                    <td key={key} style={{ padding: '8px', border: `1px solid ${SAFFRON}`, verticalAlign: 'top' }}>
-                      <span style={{ display: 'inline-block', background: EMERALD, color: '#fff', borderRadius: 14, padding: '3px 10px', fontWeight: 700, fontSize: 11.5 }}>
-                        {pillars[key] || 'Not assessed'}
-                      </span>
-                      <div style={{ marginTop: 5, fontSize: 10, color: edited ? '#c2410c' : '#666', fontWeight: edited ? 700 : 400 }}>
+                    <td key={key} style={cell}>
+                      <div style={{ fontWeight: 800, color: EMERALD, fontSize: 12, fontFamily: "'Source Serif 4', Georgia, serif" }}>{pillars[key] || 'Not assessed'}</div>
+                      <div style={{ marginTop: 3, fontSize: 10, color: edited ? BRASS : MUTED, fontWeight: edited ? 700 : 400 }}>
                         {edited
                           ? `✎ Edited by Doctor (AI: ${aiPillars[key] || 'not assessed'})`
-                          : (consult?.signedAt ? '✓ Verified by physician' : 'AI triage value')}
+                          : (consult?.signedAt ? '✓ Verified by physician' : 'AI triage value — pending verification')}
                       </div>
                     </td>
                   );
@@ -253,55 +271,32 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
               </tr>
             </tbody>
           </table>
+          {correlation && (
+            <div style={{ marginTop: 6, borderLeft: `3px solid ${EMERALD}`, padding: '4px 10px', fontSize: 11, color: '#292524' }}>
+              <strong style={{ color: EMERALD }}>AI Vaidya correlation:</strong> {correlation}
+              <span style={{ color: MUTED }}> (AI-generated — requires physician verification)</span>
+            </div>
+          )}
         </Section>
 
-        <Section n={5} title="Past Medical Records (Scanned at Kiosk) — Documents">
-          {clinical.reports.length ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {/* 4 */}
+        <Section n={4} title="Scanned Records & Lab Matrix" hi="प्रयोगशाला परिणाम">
+          {clinical.reports.length > 0 && (
+            <div style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
+              <strong style={{ color: INK }}>Documents:</strong>{' '}
               {clinical.reports.map((r, i) => (
-                <div key={r.id || i} style={{ border: '1px solid #ccc', borderLeft: '3px solid #059669', borderRadius: 5, padding: '5px 10px', fontSize: 11.5, background: '#fafafa' }}>
-                  <div style={{ fontWeight: 700 }}>
-                    {docTypeLabel(r.documentType)} — {r.title || r.fileName}
-                  </div>
-                  <div style={{ color: '#666', fontSize: 10.5, marginTop: 1 }}>
-                    Scanned {r.uploadedAt ? docTime(r.uploadedAt) : '—'}
-                    {` · ${r.medicines?.length || 0} medicine(s) · ${r.labTests?.length || 0} lab parameter(s)`}
-                    {r.fileName && r.fileName !== r.title ? ` · file: ${r.fileName}` : ''}
-                  </div>
-                </div>
+                <span key={r.id || i}>{i ? ' · ' : ''}{docTypeLabel(r.documentType)} — {r.title || r.fileName}{r.uploadedAt ? ` (${docTime(r.uploadedAt)})` : ''}</span>
               ))}
             </div>
-          ) : (
-            <Row label="Source Documents" value={p.documents?.ocrData?.documentType || 'No document uploaded'} />
           )}
-        </Section>
-
-        <Section n={6} title="Past Medical Records (Scanned at Kiosk) — Existing Medications">
-          {clinical.medicines.length ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-              {clinical.medicines.map((m, i) => (
-                <span key={i} style={{ border: '1px solid #059669', borderRadius: 14, padding: '3px 10px', fontSize: 11.5, background: '#ecfdf5', color: '#111' }}>
-                  <strong>{m.name}</strong>
-                  {m.dosage ? ` · ${m.dosage}` : ''}
-                  {m.frequency ? ` · ${m.frequency}` : ''}
-                  {m.instructions ? ` (${m.instructions})` : ''}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <Row label="Current Medications" value={p.meds && p.meds !== 'None' ? p.meds : 'None recorded'} />
-          )}
-        </Section>
-
-        <Section n={7} title="Scanned Lab Matrix">
           {clinical.labTests.length ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, marginTop: 4 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
               <thead>
-                <tr style={{ background: '#f1f3f4' }}>
-                  <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #ddd', width: '34%' }}>Test Parameter</th>
-                  <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #ddd', width: '22%' }}>Observed Value</th>
-                  <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #ddd', width: '28%' }}>Normal Range</th>
-                  <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #ddd', width: '16%' }}>Status</th>
+                <tr>
+                  <th style={{ ...thCell, width: '34%' }}>Test Parameter</th>
+                  <th style={{ ...thCell, width: '20%' }}>Observed Value</th>
+                  <th style={{ ...thCell, width: '30%' }}>Biological Reference Range</th>
+                  <th style={{ ...thCell, width: '16%' }}>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -309,12 +304,12 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
                   const st = flagStyle(l.flag);
                   const critical = l.flag === 'CRITICAL';
                   return (
-                    <tr key={i} style={critical ? { background: '#fdecea' } : undefined}>
-                      <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>{l.testName}</td>
-                      <td style={{ padding: '5px 8px', border: '1px solid #ddd', fontWeight: 700 }}>{l.observedValue || '—'}</td>
-                      <td style={{ padding: '5px 8px', border: '1px solid #ddd', color: '#555' }}>{l.referenceRange || '—'}</td>
-                      <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>
-                        <span style={{ background: st.print, color: '#fff', borderRadius: 12, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, letterSpacing: critical ? 0.5 : 0 }}>
+                    <tr key={i} style={critical ? { background: '#fff1f2' } : undefined}>
+                      <td style={cell}>{l.testName}</td>
+                      <td style={{ ...cell, fontWeight: 700 }}>{l.observedValue || '—'}</td>
+                      <td style={{ ...cell, color: MUTED }}>{l.referenceRange || '—'}</td>
+                      <td style={cell}>
+                        <span style={{ border: `1.5px solid ${st.print}`, color: st.print, borderRadius: 4, padding: '0 7px', fontSize: 10, fontWeight: 800 }}>
                           {critical ? '⚠ ' : ''}{st.label}
                         </span>
                       </td>
@@ -324,122 +319,92 @@ export default function CaseHistorySheet({ patient, onClose, autoDownload = fals
               </tbody>
             </table>
           ) : (
-            <Row label="Lab Markers" value={p.labs && p.labs !== 'None' ? p.labs : 'None recorded'} />
+            <KvTable rows={[[['Lab Markers', clean(p.labs) || 'None recorded']]]} />
           )}
-          {clinical.observations && <div style={{ marginTop: 6 }}><Row label="Clinical Observations" value={clinical.observations} /></div>}
-        </Section>
-
-        <Section n={8} title="AI Vaidya — Clinical / AYUSH Correlation">
-          <div style={{ background: '#f7f5ff', borderLeft: '3px solid #6750a4', padding: '8px 10px', fontSize: 12, lineHeight: 1.55 }}>
-            {p.diagnosticCorrelation || clinical.correlation ||
-              `Reported markers — Dosha ${p.dosha || '—'}, Agni ${agni}, Koshtha ${koshtha}. ${clinical.labTests.length ? 'Correlate the lab matrix above with these Ayurvedic markers during examination.' : 'No prior records available for correlation.'}`}
-          </div>
-          <div style={{ marginTop: 6, fontSize: 11, color: '#666' }}>
-            AI-generated correlation of past prescriptions and lab markers with current Rogi Pariksha findings — requires physician verification.
+          <div style={{ marginTop: 6 }}>
+            <KvTable rows={[
+              [['Existing Medications', clinical.medicines.length
+                ? clinical.medicines.map(m => [m.name, m.dosage, m.frequency].filter(Boolean).join(' ')).join('; ')
+                : (clean(p.meds) || 'None recorded')]],
+              ...(clinical.observations ? [[['Clinical Observations', clinical.observations]]] : []),
+            ]} />
           </div>
         </Section>
 
-        <Section n={9} title="Current Physician Prescription (Rx) & Clinical Diagnosis">
-          <Row label="AI Recommendation" value={p.recommendation} />
+        {/* 5 */}
+        <Section n={5} title="Attending Physician's Final Prescription" hi="चिकित्सक नुस्खा एवं पथ्य-अपथ्य">
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 11.5 }}>
+            <thead>
+              <tr><th style={thCell}>Primary Diagnosis</th><th style={thCell}>Samprapti / Ayurvedic Differential</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ ...cell, whiteSpace: 'pre-wrap' }}>{consult?.diagnosis || ruled(2)}</td>
+                <td style={{ ...cell, whiteSpace: 'pre-wrap' }}>{consult?.ayushDiagnosis || ruled(2)}</td>
+              </tr>
+              {consult?.clinicalNotes && (
+                <tr><td style={{ ...cell, whiteSpace: 'pre-wrap' }} colSpan={2}><strong style={{ color: MUTED }}>Examination notes: </strong>{consult.clinicalNotes}</td></tr>
+              )}
+            </tbody>
+          </table>
 
-          {/* Physician's own diagnosis — printed when signed, ruled lines when not. */}
-          <div style={{ marginTop: 8 }}>
-            <div style={{ color: '#555', fontWeight: 600, marginBottom: 4 }}>Primary Diagnosis (Allopathic / Differential)</div>
-            {consult?.diagnosis ? (
-              <div style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.5 }}>{consult.diagnosis}</div>
-            ) : (
-              <><div style={{ borderBottom: '1px dashed #999', height: 22 }} /><div style={{ borderBottom: '1px dashed #999', height: 22 }} /></>
-            )}
-          </div>
-
-          <div style={{ marginTop: 8 }}>
-            <div style={{ color: '#555', fontWeight: 600, marginBottom: 4 }}>AYUSH Diagnosis / Samprapti</div>
-            {consult?.ayushDiagnosis ? (
-              <div style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.5 }}>{consult.ayushDiagnosis}</div>
-            ) : (
-              <><div style={{ borderBottom: '1px dashed #999', height: 22 }} /><div style={{ borderBottom: '1px dashed #999', height: 22 }} /></>
-            )}
-          </div>
-
-          {consult?.clinicalNotes && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ color: '#555', fontWeight: 600, marginBottom: 4 }}>Clinical Observations &amp; Examination Notes</div>
-              <div style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.5 }}>{consult.clinicalNotes}</div>
-            </div>
-          )}
-
-          {/* Newly prescribed drugs — kept visually distinct from the kiosk-scanned history above. */}
-          <div style={{ marginTop: 10 }}>
-            <div style={{ color: '#555', fontWeight: 600, marginBottom: 4 }}>
-              ℞ Current Physician Prescription (Newly Prescribed)
-            </div>
-            {rx.length ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
-                <thead>
-                  <tr style={{ background: '#ecfdf5' }}>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '28%' }}>Medicine</th>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '13%' }}>Form</th>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '20%' }}>Dose / Freq</th>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '25%' }}>Timing</th>
-                    <th style={{ textAlign: 'left', padding: '5px 8px', border: '1px solid #a7f3d0', width: '14%' }}>Duration</th>
+          <div style={{ marginTop: 8, fontWeight: 800, color: EMERALD, fontSize: 12 }}>℞</div>
+          {rx.length ? (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thCell, width: '5%' }}>#</th>
+                  <th style={{ ...thCell, width: '27%' }}>Medicine</th>
+                  <th style={{ ...thCell, width: '11%' }}>Form</th>
+                  <th style={{ ...thCell, width: '19%' }}>Dose &amp; Frequency</th>
+                  <th style={{ ...thCell, width: '24%' }}>Timing</th>
+                  <th style={{ ...thCell, width: '14%' }}>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rx.map((m, i) => (
+                  <tr key={i}>
+                    <td style={{ ...cell, color: MUTED }}>{i + 1}</td>
+                    <td style={{ ...cell, fontWeight: 700 }}>{m.name}</td>
+                    <td style={cell}>{m.form || '—'}</td>
+                    <td style={cell}>{m.dosage || '—'}</td>
+                    <td style={cell}>{m.timing || '—'}</td>
+                    <td style={cell}>{m.duration || '—'}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rx.map((m, i) => (
-                    <tr key={i}>
-                      <td style={{ padding: '5px 8px', border: '1px solid #ddd', fontWeight: 700 }}>{m.name}</td>
-                      <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>{m.form || '—'}</td>
-                      <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>{m.dosage || '—'}</td>
-                      <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>{m.timing || '—'}</td>
-                      <td style={{ padding: '5px 8px', border: '1px solid #ddd' }}>{m.duration || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <><div style={{ borderBottom: '1px dashed #999', height: 22 }} /><div style={{ borderBottom: '1px dashed #999', height: 22 }} /><div style={{ borderBottom: '1px dashed #999', height: 22 }} /></>
-            )}
-          </div>
+                ))}
+              </tbody>
+            </table>
+          ) : ruled(3)}
 
-          <div style={{ marginTop: 10 }}>
-            <div style={{ color: '#555', fontWeight: 600, marginBottom: 4 }}>
-              Physician Clinical Advice &amp; Dietary Guidelines (Pathya–Apathya)
+          <div style={{ marginTop: 8 }}>
+            <KvTable rows={[
+              [['Pathya-Apathya', consult?.advice ? <span key="a" style={{ whiteSpace: 'pre-wrap' }}>{consult.advice}</span> : ruled(2)]],
+              [['Follow-up Date', fmtDate(consult?.followUpDate)], ['AI Recommendation', p.recommendation]],
+            ]} />
+          </div>
+        </Section>
+
+        {/* 6 */}
+        <Section n={6} title="Physician Signature, Registration & Official Stamp">
+          <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+            <div style={{ flex: 1, border: `1px solid ${RULE}`, padding: '8px 10px', fontSize: 11.5 }}>
+              <div style={{ color: MUTED, fontSize: 10.5, fontWeight: 600 }}>Attending Physician Signature</div>
+              <div style={{ height: 34, borderBottom: `1px solid ${INK}`, margin: '6px 0 4px' }} />
+              <div style={{ fontWeight: 700 }}>{consult?.signedBy || 'Dr. Ananya Sharma, BAMS, MD (Ayurveda)'}</div>
             </div>
-            {consult?.advice ? (
-              <div style={{ background: '#ecfdf5', borderLeft: '3px solid #059669', padding: '8px 10px', fontSize: 12, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                {consult.advice}
-              </div>
-            ) : (
-              <><div style={{ borderBottom: '1px dashed #999', height: 22 }} /><div style={{ borderBottom: '1px dashed #999', height: 22 }} /></>
-            )}
-            <div style={{ marginTop: 6 }}>
-              <Row label="Follow-up" value={consult?.followUpDate} />
+            <div style={{ flex: 1, border: `1px solid ${RULE}`, padding: '8px 10px', fontSize: 11.5 }}>
+              <div style={{ color: MUTED, fontSize: 10.5, fontWeight: 600 }}>Registration No. &amp; Date</div>
+              <div style={{ marginTop: 8, fontWeight: 700 }}>{consult?.regNo || 'AY-DL-88421'}</div>
+              <div style={{ marginTop: 2 }}>{consult?.signedAt ? fmt(consult.signedAt) : '____ / ____ / ________'}</div>
+              {consult?.signedAt && <div style={{ marginTop: 4, color: EMERALD, fontWeight: 700, fontSize: 10.5 }}>✓ Digitally finalised</div>}
+            </div>
+            <div style={{ width: 130, border: `1.5px dashed ${BRASS}`, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: BRASS, fontSize: 10, fontWeight: 700, letterSpacing: 0.5, padding: 6 }}>
+              OFFICIAL STAMP<br />कार्यालय मुहर
             </div>
           </div>
-
-          {/* Signature & registration block — bottom right of the sheet. */}
-          <div style={{ marginTop: 26, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 20 }}>
-            <div style={{ fontSize: 11, color: '#666', maxWidth: '52%' }}>
-              Generated by AYUSH Swasthya Sahayak AI · For physician verification &amp; dual sign-off.
-              {consult?.signedAt && (
-                <div style={{ marginTop: 4, color: EMERALD, fontWeight: 700 }}>
-                  ✓ Prescription digitally finalised on {fmt(consult.signedAt)}
-                </div>
-              )}
-            </div>
-            <div style={{ textAlign: 'left', minWidth: 250 }}>
-              <div style={{ fontSize: 11.5, color: '#333', marginBottom: 18 }}>
-                Treating Physician Sign: <span style={{ borderBottom: '1px solid #111', display: 'inline-block', minWidth: 130 }}>&nbsp;</span>
-              </div>
-              <div style={{ fontSize: 11.5, color: '#333' }}>
-                Reg No. / Date: <span style={{ borderBottom: '1px solid #111', display: 'inline-block', minWidth: 150 }}>
-                  &nbsp;{consult ? `${consult.regNo || 'AY-DL-88421'} · ${fmt(consult.signedAt).split(',')[0]}` : ''}
-                </span>
-              </div>
-              {consult?.signedBy && (
-                <div style={{ fontSize: 10.5, color: '#666', marginTop: 4 }}>{consult.signedBy}</div>
-              )}
-            </div>
+          <div style={{ marginTop: 10, borderTop: `3px double ${EMERALD}`, paddingTop: 4, fontSize: 9.5, color: MUTED, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <span>Generated by AyushBridge MediKiosk AI · AI findings require physician verification &amp; dual sign-off.</span>
+            <span>ABDM FHIR R4 Ready · DPDP Act 2023</span>
           </div>
         </Section>
       </div>

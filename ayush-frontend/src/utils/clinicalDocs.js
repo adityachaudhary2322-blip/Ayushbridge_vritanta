@@ -9,10 +9,11 @@
 
 export const LAB_FLAG_STYLE = {
   // CRITICAL pulses on screen so it cannot be missed in a busy queue.
-  CRITICAL: { chip: 'bg-red-600 text-white animate-pulse ring-2 ring-red-400', print: '#8c0e0e', label: 'CRITICAL' },
-  HIGH: { chip: 'bg-error-container text-on-error-container', print: '#b3261e', label: 'HIGH' },
-  LOW: { chip: 'bg-amber-200 text-amber-900', print: '#e8710a', label: 'LOW' },
-  NORMAL: { chip: 'bg-green-100 text-green-800', print: '#188038', label: 'NORMAL' },
+  // Ruby → warm amber-red → muted amber → forest sage. Tuned for the dark stone canvas.
+  CRITICAL: { chip: 'bg-rose-700 text-white animate-pulse ring-2 ring-rose-500/70', print: '#9f1239', label: 'CRITICAL' },
+  HIGH: { chip: 'bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/40', print: '#c2410c', label: 'HIGH' },
+  LOW: { chip: 'bg-amber-500/10 text-amber-300/90 ring-1 ring-amber-600/40', print: '#b45309', label: 'LOW' },
+  NORMAL: { chip: 'bg-emerald-600/15 text-emerald-400 ring-1 ring-emerald-600/30', print: '#047857', label: 'NORMAL' },
 };
 
 /** Short, India-formatted timestamp for a document badge. */
@@ -23,7 +24,7 @@ export function docTime(ts) {
   } catch { return String(ts); }
 }
 
-const UNVERIFIED = { chip: 'bg-surface-container-high text-on-surface-variant', print: '#5f6368', label: 'UNVERIFIED' };
+const UNVERIFIED = { chip: 'bg-stone-700/40 text-stone-400 ring-1 ring-stone-600/50', print: '#57534e', label: 'UNVERIFIED' };
 
 /**
  * Style for a lab flag. An unrecognised flag falls back to a neutral badge —

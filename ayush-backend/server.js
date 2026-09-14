@@ -1006,7 +1006,7 @@ app.post('/api/zoom/create', async (req, res) => {
 // ── POST /api/consultation/save — physician diagnosis + prescription sign-off ──
 // The dashboard derives its display token from the record id, so a lookup has to
 // accept the raw id, the AYUSH-XXXXXX token, or a stored token alias.
-const CONSULT_FORMS = ['Tablet', 'Capsule', 'Churna', 'Kwath', 'Syrup', 'Ointment', 'Other'];
+const CONSULT_FORMS = ['Vati', 'Tablet', 'Capsule', 'Churna', 'Kwath', 'Syrup', 'Ointment', 'Other'];
 
 function tokenOf(record) {
   return record.token || `AYUSH-${String(record.id || '').slice(-6).toUpperCase()}`;

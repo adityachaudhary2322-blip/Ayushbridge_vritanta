@@ -154,7 +154,7 @@ export default function MobileScan() {
     <div className="min-h-screen bg-surface flex flex-col items-center px-4 py-8 gap-6">
       {/* Header */}
       <div className="w-full max-w-md flex flex-col items-center gap-2 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
+        <div className="w-14 h-14 rounded-2xl bg-emerald-700 text-white flex items-center justify-center shadow-sm">
           <span className="material-symbols-outlined text-[30px]">document_scanner</span>
         </div>
         <h1 className="font-headline-sm text-headline-sm text-on-surface font-semibold">AYUSH Document Scan</h1>
@@ -243,7 +243,7 @@ export default function MobileScan() {
             <div className="w-full flex flex-col gap-2.5">
               <button
                 onClick={addAnother}
-                className="w-full px-5 py-3.5 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-sm hover:bg-primary-container transition-colors flex items-center justify-center gap-1.5"
+                className="w-full px-5 py-3.5 rounded-xl bg-emerald-700 text-white font-label-lg text-label-lg shadow-sm hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1.5"
               >
                 <span className="material-symbols-outlined text-[20px]">add_a_photo</span>
                 ➕ Add Another Document / दूसरी रिपोर्ट जोड़ें
@@ -265,7 +265,7 @@ export default function MobileScan() {
           <div className="w-full max-w-md grid grid-cols-2 gap-3">
             <button
               onClick={() => cameraRef.current?.click()}
-              className="flex flex-col items-center justify-center gap-2 p-6 rounded-2xl bg-primary text-on-primary shadow-sm hover:bg-primary-container transition-colors"
+              className="flex flex-col items-center justify-center gap-2 p-6 rounded-2xl bg-emerald-700 text-white shadow-sm hover:bg-emerald-600 transition-colors"
             >
               <span className="material-symbols-outlined text-[32px]">photo_camera</span>
               <span className="font-label-md text-label-md">Take Photo</span>
@@ -310,7 +310,7 @@ export default function MobileScan() {
               <button
                 onClick={upload}
                 disabled={status === 'uploading'}
-                className="w-full px-5 py-3.5 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-sm hover:bg-primary-container transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                className="w-full px-5 py-3.5 rounded-xl bg-emerald-700 text-white font-label-lg text-label-lg shadow-sm hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {status === 'uploading' ? (
                   <>

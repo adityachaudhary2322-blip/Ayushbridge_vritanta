@@ -47,10 +47,10 @@ const TELE_CHIPS = {
 };
 
 const PRIORITY_CONFIG = {
-  P1: { bg: 'bg-red-600', label: 'Critical', icon: 'emergency' },
-  P2: { bg: 'bg-orange-500', label: 'Urgent', icon: 'priority_high' },
-  P3: { bg: 'bg-blue-600', label: 'Moderate', icon: 'schedule' },
-  P4: { bg: 'bg-green-600', label: 'Routine', icon: 'check_circle' },
+  P1: { bg: 'bg-rose-800', label: 'Critical', icon: 'emergency' },
+  P2: { bg: 'bg-amber-700', label: 'Urgent', icon: 'priority_high' },
+  P3: { bg: 'bg-stone-700', label: 'Moderate', icon: 'schedule' },
+  P4: { bg: 'bg-emerald-800', label: 'Routine', icon: 'check_circle' },
 };
 
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -471,18 +471,18 @@ export default function TeleConsultRoom() {
   const stageIdx = STAGES.indexOf(stage);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-stone-900 text-white flex flex-col relative overflow-hidden">
 
       <style>{`
         @keyframes call-wave { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
       `}</style>
 
       {/* Top status bar */}
-      <div className="h-1 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-600" />
-      <div className="flex items-center justify-between gap-2 px-4 sm:px-6 h-14 bg-slate-950/80 backdrop-blur-sm border-b-2 border-orange-500">
+      <div className="h-0.5 w-full bg-gradient-to-r from-amber-600/80 via-amber-500/40 to-emerald-700/80" />
+      <div className="flex items-center justify-between gap-2 px-4 sm:px-6 h-14 bg-stone-950/80 backdrop-blur-sm border-b-2 border-amber-500">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${onHold ? 'bg-amber-400' : 'bg-green-500 animate-pulse'}`} />
-          <span className="font-label-md text-label-md text-orange-400 truncate">📞 Telephony Voice Consultation · <span className="text-white/90">Line {room}</span></span>
+          <span className="font-label-md text-label-md text-amber-400 truncate">📞 Telephony Voice Consultation · <span className="text-white/90">Line {room}</span></span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {phase !== 'waiting' && phase !== 'admitted' && (
@@ -499,7 +499,7 @@ export default function TeleConsultRoom() {
       <div className="flex-1 relative flex items-start justify-center p-4 sm:p-8 min-h-[780px]">
 
         {/* Audio call card: AI Vaidya */}
-        <div className="w-full max-w-2xl bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-orange-500/70 rounded-3xl shadow-2xl flex flex-col items-center gap-5 px-6 pt-10 pb-8 relative overflow-hidden">
+        <div className="w-full max-w-2xl bg-gradient-to-b from-stone-800 to-stone-900 border-2 border-amber-500/70 rounded-3xl shadow-2xl flex flex-col items-center gap-5 px-6 pt-10 pb-8 relative overflow-hidden">
           <div className="relative flex items-center justify-center">
             {(speaking || listening) && !onHold && (
               <>
@@ -508,14 +508,14 @@ export default function TeleConsultRoom() {
               </>
             )}
             <div className={`relative w-28 h-28 rounded-full flex items-center justify-center shadow-2xl transition-all ${
-              onHold ? 'bg-amber-600/80' : speaking ? 'bg-primary scale-105' : listening ? 'bg-tertiary/80' : botStatus === 'thinking' ? 'bg-secondary/70' : 'bg-slate-700'}`}>
+              onHold ? 'bg-amber-600/80' : speaking ? 'bg-primary scale-105' : listening ? 'bg-tertiary/80' : botStatus === 'thinking' ? 'bg-secondary/70' : 'bg-stone-700'}`}>
               <span className="material-symbols-outlined text-[52px] text-white">
                 {onHold ? 'phone_paused' : speaking ? 'record_voice_over' : listening ? 'hearing' : botStatus === 'thinking' ? 'psychology' : 'call'}
               </span>
             </div>
           </div>
           <div className="text-center">
-            <div className="font-title-md text-title-md text-orange-400 font-semibold">Dr. AYUSH AI Vaidya</div>
+            <div className="font-title-md text-title-md text-amber-400 font-semibold">Dr. AYUSH AI Vaidya</div>
             <div className="font-label-md text-label-md text-emerald-300">
               {onHold ? (lang === 'hi' ? 'कॉल होल्ड पर है' : 'Call on hold') :
                speaking ? (lang === 'hi' ? 'बोल रहे हैं…' : 'Speaking…') :
@@ -534,7 +534,7 @@ export default function TeleConsultRoom() {
               return (
                 <div
                   key={i}
-                  className={`w-1.5 rounded-full origin-center ${speaking ? 'bg-primary-fixed' : listening ? 'bg-green-400' : 'bg-white/20'}`}
+                  className={`w-1.5 rounded-full origin-center ${speaking ? 'bg-amber-400' : listening ? 'bg-emerald-400' : 'bg-stone-700'}`}
                   style={speaking && active
                     ? { height: `${16 + w * 40}px`, animation: `call-wave ${0.7 + (i % 5) * 0.12}s ease-in-out ${i * 0.05}s infinite` }
                     : { height: `${8 + (active ? level : 0.12) * 48}px`, transition: 'height 80ms linear' }}
@@ -568,10 +568,10 @@ export default function TeleConsultRoom() {
                   key={l.code}
                   onClick={() => chooseLang(l.code)}
                   className={`px-6 py-4 rounded-2xl font-title-md text-title-md shadow-lg transition-all flex items-center gap-2 ${
-                    i === 0 ? 'bg-primary text-on-primary hover:bg-primary-container' : 'bg-white text-slate-900 hover:bg-slate-100'
+                    i === 0 ? 'bg-emerald-700 text-white hover:bg-emerald-600' : 'border border-amber-600/50 bg-stone-900 text-amber-300 hover:bg-stone-800'
                   }`}
                 >
-                  <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${i === 0 ? 'bg-white/25' : 'bg-slate-900/10'}`}>{i + 1}</span>
+                  <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${i === 0 ? 'bg-white/20' : 'bg-amber-500/15'}`}>{i + 1}</span>
                   {l.native}{l.native === l.name ? '' : ` (${l.name})`}
                 </button>
               ))}
@@ -582,9 +582,9 @@ export default function TeleConsultRoom() {
 
         {/* Interview progress */}
         {phase === 'interview' && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
+          <div className="absolute top-4 left-1/2 -transtone-x-1/2 flex items-center gap-2">
             {STAGES.map((s, i) => (
-              <div key={s} className={`h-2 rounded-full transition-all ${i < stageIdx ? 'w-6 bg-primary' : i === stageIdx ? 'w-6 bg-primary/60' : 'w-2 bg-white/20'}`} />
+              <div key={s} className={`h-2 rounded-full transition-all ${i < stageIdx ? 'w-6 bg-emerald-600' : i === stageIdx ? 'w-6 bg-amber-500' : 'w-2 bg-stone-700'}`} />
             ))}
             <span className="ml-2 font-label-sm text-label-sm text-white/70">{STAGE_LABEL[stage][lang]}</span>
           </div>
@@ -593,7 +593,7 @@ export default function TeleConsultRoom() {
         {/* Distinct voice-service error banner (click to retry) */}
         {voiceError && (
           <button onClick={retryVoice}
-            className="absolute top-14 left-1/2 -translate-x-1/2 max-w-lg text-left bg-red-600/90 text-white rounded-xl px-4 py-2.5 font-body-sm text-body-sm flex items-start gap-2 hover:bg-red-700/90 transition-colors">
+            className="absolute top-14 left-1/2 -transtone-x-1/2 max-w-lg text-left bg-red-600/90 text-white rounded-xl px-4 py-2.5 font-body-sm text-body-sm flex items-start gap-2 hover:bg-red-700/90 transition-colors">
             <span className="material-symbols-outlined text-[18px] shrink-0 mt-0.5">error</span>
             <span>{voiceError} <span className="underline">{lang === 'hi' ? 'पुनः प्रयास' : 'Retry'}</span></span>
           </button>
@@ -604,7 +604,7 @@ export default function TeleConsultRoom() {
           <div className="absolute inset-x-0 bottom-16 flex flex-col items-center gap-3 px-4">
             {docChoice !== 'yes' ? (
               <div className="flex flex-col sm:flex-row items-center gap-3">
-                <button onClick={docYes} className="px-5 py-3.5 rounded-2xl bg-primary text-on-primary font-title-md text-title-md shadow-lg hover:bg-primary-container transition-all flex items-center gap-2">
+                <button onClick={docYes} className="px-5 py-3.5 rounded-2xl bg-emerald-700 text-white font-title-md text-title-md shadow-lg hover:bg-emerald-600 transition-all flex items-center gap-2">
                   <span className="material-symbols-outlined text-[22px]">description</span>
                   {lang === 'hi' ? '📄 हाँ, पर्ची स्कैन करें' : '📄 Yes, Scan Document'}
                 </button>
@@ -614,9 +614,9 @@ export default function TeleConsultRoom() {
                 </button>
               </div>
             ) : (
-              <div className="bg-white rounded-2xl p-4 flex flex-col items-center gap-2.5 shadow-xl max-w-sm">
+              <div className="bg-stone-900 border border-stone-700 rounded-xl p-4 flex flex-col items-center gap-2.5 max-w-sm">
                 {docResult?.status === 'ready' ? (
-                  <div className="flex flex-col items-center gap-3 text-slate-900">
+                  <div className="flex flex-col items-center gap-3 text-stone-100">
                     <div className="flex items-center gap-2 text-green-600">
                       <span className="material-symbols-outlined text-[22px]">check_circle</span>
                       <span className="font-title-md text-title-md font-semibold">{lang === 'hi' ? 'दस्तावेज़ मिला!' : 'Document Received!'}</span>
@@ -638,9 +638,9 @@ export default function TeleConsultRoom() {
                   </div>
                 ) : (
                   <>
-                    <p className="font-body-sm text-body-sm text-slate-700 text-center">{lang === 'hi' ? 'फ़ोन कैमरे से यह QR स्कैन करें।' : 'Scan this QR with your phone camera.'}</p>
-                    <QRCodeSVG value={mobileUrl} size={150} level="M" />
-                    <button onClick={advanceFromDocs} className="px-4 py-2.5 rounded-xl bg-primary text-on-primary font-label-md text-label-md hover:bg-primary-container transition-colors flex items-center gap-1.5">
+                    <p className="font-body-sm text-body-sm text-stone-300 text-center">{lang === 'hi' ? 'फ़ोन कैमरे से यह QR स्कैन करें।' : 'Scan this QR with your phone camera.'}</p>
+                    <div className="p-2 bg-white rounded-md"><QRCodeSVG value={mobileUrl} size={150} level="M" /></div>
+                    <button onClick={advanceFromDocs} className="px-4 py-2.5 rounded-xl bg-emerald-700 text-white font-label-md text-label-md hover:bg-emerald-600 transition-colors flex items-center gap-1.5">
                       {lang === 'hi' ? 'आगे बढ़ें' : 'Continue Intake'}
                       <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                     </button>
@@ -658,7 +658,7 @@ export default function TeleConsultRoom() {
               <div className="flex flex-wrap items-center justify-center gap-2 max-w-2xl">
                 {(TELE_CHIPS[stage][lang] || TELE_CHIPS[stage].en).map(chip => (
                   <button key={chip} onClick={() => acceptAnswer(stage, chip)}
-                    className="px-3.5 py-2 rounded-full bg-white/15 hover:bg-primary hover:text-on-primary text-white font-label-md text-label-md backdrop-blur-sm transition-colors">
+                    className="px-3.5 py-2 rounded-full bg-white/15 hover:bg-emerald-700 hover:text-white text-white font-label-md text-label-md backdrop-blur-sm transition-colors">
                     {chip}
                   </button>
                 ))}
@@ -670,9 +670,9 @@ export default function TeleConsultRoom() {
                 onChange={(e) => setTypedAnswer(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') submitTyped(); }}
                 placeholder={lang === 'hi' ? 'शोर हो? यहाँ टाइप करें…' : 'Noisy? Type your answer…'}
-                className="flex-1 h-11 px-4 rounded-xl bg-white/90 text-slate-900 placeholder:text-slate-500 font-body-md text-body-md focus:outline-none"
+                className="flex-1 h-11 px-4 rounded-md bg-stone-950 border border-stone-700 text-stone-100 placeholder:text-stone-600 font-body-md text-body-md focus:outline-none focus:border-emerald-600"
               />
-              <button onClick={submitTyped} className="h-11 px-4 rounded-xl bg-primary text-on-primary font-label-md text-label-md hover:bg-primary-container transition-colors flex items-center gap-1.5">
+              <button onClick={submitTyped} className="h-11 px-4 rounded-xl bg-emerald-700 text-white font-label-md text-label-md hover:bg-emerald-600 transition-colors flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[18px]">send</span>
               </button>
             </div>
@@ -681,8 +681,8 @@ export default function TeleConsultRoom() {
 
         {/* Waiting room overlay */}
         {(phase === 'waiting' || phase === 'admitted') && (
-          <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center z-20">
-            <div className="bg-slate-800 rounded-3xl shadow-2xl px-10 py-12 flex flex-col items-center gap-5 ring-1 ring-white/10 max-w-md text-center">
+          <div className="absolute inset-0 bg-stone-950/90 backdrop-blur-sm flex items-center justify-center z-20">
+            <div className="bg-stone-800 rounded-3xl shadow-2xl px-10 py-12 flex flex-col items-center gap-5 ring-1 ring-white/10 max-w-md text-center">
               <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center">
                 <span className="material-symbols-outlined text-primary text-[36px]">stethoscope</span>
               </div>
@@ -710,15 +710,15 @@ export default function TeleConsultRoom() {
 
         {/* Completion summary overlay */}
         {triageResult && (
-          <div className="absolute inset-0 bg-slate-950/92 backdrop-blur-sm flex items-center justify-center z-20 p-4">
-            <div className="bg-white text-slate-900 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
+          <div className="absolute inset-0 bg-stone-950/92 backdrop-blur-sm flex items-center justify-center z-20 p-4">
+            <div className="bg-stone-900 text-stone-100 border border-stone-800 rounded-xl w-full max-w-lg overflow-hidden">
               <TeleSummary result={triageResult} lang={lang} />
-              <div className="p-5 flex gap-3 border-t border-slate-200">
+              <div className="p-5 flex gap-3 border-t border-stone-800">
                 <button onClick={endCall} className="flex-1 px-5 py-3.5 rounded-xl bg-red-600 text-white font-label-lg text-label-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2">
                   <span className="material-symbols-outlined text-[20px]">call_end</span>
                   {lang === 'hi' ? 'कॉल समाप्त करें' : 'End Call'}
                 </button>
-                <button onClick={() => navigate('/doctor')} className="px-5 py-3.5 rounded-xl bg-slate-100 text-slate-800 font-label-md text-label-md hover:bg-slate-200 transition-colors flex items-center justify-center gap-2">
+                <button onClick={() => navigate('/doctor')} className="px-5 py-3.5 rounded-md border border-stone-700 text-stone-200 font-label-md text-label-md hover:bg-stone-800 transition-colors flex items-center justify-center gap-2">
                   <span className="material-symbols-outlined text-[18px]">stethoscope</span>Doctor View
                 </button>
               </div>
@@ -729,10 +729,10 @@ export default function TeleConsultRoom() {
 
       {/* Doctor clinical notes — live structured capture plus free-text notes */}
       {phase !== 'waiting' && phase !== 'admitted' && (
-        <aside className="lg:w-80 shrink-0 bg-slate-900 border-t-2 lg:border-t-0 lg:border-l-2 border-orange-500 p-4 flex flex-col gap-3">
+        <aside className="lg:w-80 shrink-0 bg-stone-900 border-t-2 lg:border-t-0 lg:border-l-2 border-amber-500 p-4 flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-orange-400 text-[20px]">clinical_notes</span>
-            <span className="font-title-md text-title-md text-orange-400 font-semibold">Doctor Clinical Notes</span>
+            <span className="material-symbols-outlined text-amber-400 text-[20px]">clinical_notes</span>
+            <span className="font-title-md text-title-md text-amber-400 font-semibold">Doctor Clinical Notes</span>
           </div>
           <dl className="flex flex-col gap-1.5 rounded-xl bg-white/5 p-3 font-body-sm text-body-sm">
             {[
@@ -770,7 +770,7 @@ export default function TeleConsultRoom() {
 
       {/* Bottom audio call controls */}
       {!triageResult && phase !== 'waiting' && phase !== 'admitted' && (
-        <div className="flex flex-col items-center gap-2 py-4 border-t border-white/10 bg-slate-950/70">
+        <div className="flex flex-col items-center gap-2 py-4 border-t border-white/10 bg-stone-950/70">
           <div className="flex flex-wrap items-start justify-center gap-4 sm:gap-6">
             <CallControl
               icon={muted ? 'mic_off' : 'mic'}
@@ -815,7 +815,7 @@ function CallControl({ icon, label, onClick, active = false, danger = false, dis
     <button onClick={onClick} disabled={disabled} className="flex flex-col items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed group">
       <span className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-colors ${
         danger ? 'bg-red-600 group-hover:bg-red-700 text-white'
-          : active ? 'bg-white text-slate-900'
+          : active ? 'bg-amber-500 text-stone-950'
           : 'bg-white/15 group-hover:bg-white/25 text-white'}`}>
         <span className="material-symbols-outlined text-[26px]">{icon}</span>
       </span>
@@ -837,29 +837,29 @@ function TeleSummary({ result, lang }) {
             <div className="font-label-sm text-label-sm opacity-90">{lang === 'hi' ? 'ट्राइएज परिणाम' : 'Triage result'}</div>
           </div>
         </div>
-        <div className="text-right px-3 py-1.5 rounded-xl bg-orange-500 ring-2 ring-white/70">
+        <div className="text-right px-3 py-1.5 rounded-xl bg-amber-500 ring-2 ring-white/70">
           <div className="font-label-sm text-label-sm opacity-90">Token</div>
           <div className="font-title-md text-title-md font-bold tracking-wider">{token}</div>
         </div>
       </div>
       <div className="p-6 flex flex-col gap-3">
         <div>
-          <span className="font-label-sm text-label-sm text-slate-500 uppercase tracking-wide">Chief Complaint</span>
-          <p className="font-body-lg text-body-lg text-slate-900">{result.chiefComplaint}</p>
+          <span className="font-label-sm text-label-sm text-stone-500 uppercase tracking-wide">Chief Complaint</span>
+          <p className="font-body-lg text-body-lg text-stone-100">{result.chiefComplaint}</p>
         </div>
         <div className="grid grid-cols-3 gap-2.5">
           {[
             { l: 'Dosha', v: result.dosha }, { l: 'Agni', v: result.agni || result.ayurvedicNotes?.agni }, { l: 'Koshtha', v: result.koshtha || result.ayurvedicNotes?.koshtha },
           ].map(x => (
-            <div key={x.l} className="bg-slate-100 rounded-xl p-3 text-center">
-              <div className="font-label-sm text-label-sm text-slate-500">{x.l}</div>
-              <div className="font-body-sm text-body-sm text-slate-900 font-medium">{x.v || '—'}</div>
+            <div key={x.l} className="border border-stone-800 bg-stone-950/60 rounded-lg p-3 text-center">
+              <div className="font-label-sm text-label-sm text-stone-500">{x.l}</div>
+              <div className="font-serif text-sm text-stone-100">{x.v || '—'}</div>
             </div>
           ))}
         </div>
         {result.recommendation && (
           <div className="bg-primary/5 rounded-xl p-3.5">
-            <p className="font-body-md text-body-md text-slate-800">{result.recommendation}</p>
+            <p className="font-body-md text-body-md text-stone-300">{result.recommendation}</p>
           </div>
         )}
       </div>

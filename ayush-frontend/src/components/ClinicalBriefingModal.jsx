@@ -52,7 +52,7 @@ export default function ClinicalBriefingModal({ isOpen, onClose, patient, onZoom
               <span className="material-symbols-outlined text-secondary text-[18px]">picture_as_pdf</span>
               <span className="hidden sm:inline">Download Case PDF</span>
             </button>
-            <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md shadow-sm transition-all" onClick={() => { onZoom?.(); showToast('Launching secure AYUSH Tele-Consultation Zoom Room...', 'videocam'); }}>
+            <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 text-white hover:bg-emerald-600 font-label-md text-label-md shadow-sm transition-all" onClick={() => { onZoom?.(); showToast('Launching secure AYUSH Tele-Consultation Zoom Room...', 'videocam'); }}>
               <span className="material-symbols-outlined text-[18px]">videocam</span>
               <span>Launch Zoom Meeting</span>
             </button>
@@ -284,7 +284,7 @@ export default function ClinicalBriefingModal({ isOpen, onClose, patient, onZoom
               <span className="material-symbols-outlined text-primary text-[18px]">clinical_notes</span>
               <span>Approve Ayush (Conditional)</span>
             </button>
-            <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md shadow-md transition-all" onClick={() => { onZoom?.(); showToast('Launching secure AYUSH Tele-Consultation Zoom Room...', 'videocam'); }}>
+            <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 text-white hover:bg-emerald-600 font-label-md text-label-md shadow-md transition-all" onClick={() => { onZoom?.(); showToast('Launching secure AYUSH Tele-Consultation Zoom Room...', 'videocam'); }}>
               <span className="material-symbols-outlined text-[18px]">videocam</span>
               <span>Launch One-Click Zoom Meeting</span>
             </button>

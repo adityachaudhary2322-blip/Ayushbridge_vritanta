@@ -38,10 +38,10 @@ const STAGE_LABEL = {
 };
 
 const PRIORITY_CONFIG = {
-  P1: { bg: 'bg-red-600', label: 'Critical', icon: 'emergency' },
-  P2: { bg: 'bg-orange-500', label: 'Urgent', icon: 'priority_high' },
-  P3: { bg: 'bg-blue-600', label: 'Moderate', icon: 'schedule' },
-  P4: { bg: 'bg-green-600', label: 'Routine', icon: 'check_circle' },
+  P1: { bg: 'bg-rose-800', label: 'Critical', icon: 'emergency' },
+  P2: { bg: 'bg-amber-700', label: 'Urgent', icon: 'priority_high' },
+  P3: { bg: 'bg-stone-700', label: 'Moderate', icon: 'schedule' },
+  P4: { bg: 'bg-emerald-800', label: 'Routine', icon: 'check_circle' },
 };
 
 // Tap-to-answer fallback chips per stage (noisy room / mic failure escape hatch).
@@ -409,32 +409,34 @@ export default function TouchlessKiosk() {
   const listening = botStatus === 'listening';
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-surface to-surface-container-low">
+    <div className="min-h-screen flex flex-col bg-[#0f0d0b] text-stone-100">
 
       {/* Top bar */}
-      <div className="h-1 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-600" />
-      <header className="w-full px-4 sm:px-8 h-16 flex items-center justify-between border-b-2 border-orange-500 bg-surface-container-lowest/90 backdrop-blur-sm">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-sm">
+      <header className="sticky top-0 z-20 border-b border-stone-800 bg-stone-950/85 backdrop-blur-md">
+        <div className="h-0.5 bg-gradient-to-r from-amber-600/80 via-amber-500/40 to-emerald-700/80" />
+        <div className="w-full px-4 sm:px-8 h-16 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="w-9 h-9 shrink-0 rounded-full border border-amber-600/50 bg-amber-500/10 text-amber-500 flex items-center justify-center">
             <span className="material-symbols-outlined text-[20px]">spa</span>
-          </div>
-          <div>
-            <div className="font-title-md text-title-md text-on-surface font-semibold leading-none">AYUSH Swasthya Sahayak</div>
-            <div className="font-label-sm text-label-sm text-on-surface-variant">आयुष स्वास्थ्य सहायक · Touchless Triage Kiosk</div>
+          </span>
+          <div className="leading-tight min-w-0">
+            <div className="text-sm font-semibold text-stone-100 truncate">AyushBridge MediKiosk · Voice AI</div>
+            <div className="font-serif text-[12px] text-stone-400 truncate">आवाज आधारित कियोस्क · Touchless Triage</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 bg-surface-container rounded-full px-3.5 py-1.5 font-label-md text-label-md text-on-surface">
-            <span className="material-symbols-outlined text-primary text-[17px]">translate</span>
-            <span>{languageNative(selectedLang)}</span>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-600/40 px-3 py-1.5 text-sm text-amber-300">
+            <span className="material-symbols-outlined text-[16px]">translate</span>
+            <span className="font-serif">{languageNative(selectedLang)}</span>
           </div>
-          <button onClick={() => navigate('/text-intake')} className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors">
+          <button onClick={() => navigate('/text-intake')} className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-stone-700 text-stone-300 hover:text-stone-100 text-sm font-medium transition-colors">
             <span className="material-symbols-outlined text-[18px]">keyboard</span>
             Switch to Text Intake
           </button>
-          <button onClick={() => navigate('/doctor')} title="Doctor Dashboard" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">
+          <button onClick={() => navigate('/doctor')} title="Doctor Workstation" className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-md border border-stone-700 text-stone-400 hover:text-stone-100 transition-colors">
             <span className="material-symbols-outlined text-[18px]">stethoscope</span>
           </button>
+        </div>
         </div>
       </header>
 
@@ -449,84 +451,73 @@ export default function TouchlessKiosk() {
             <TokenCard result={triageResult} lang={lang} onReset={resetKiosk} onDoctor={() => navigate('/doctor')} />
           ) : (
             <>
-              {/* Avatar with concentric waveform rings */}
-              <div className="relative flex items-center justify-center w-64 h-64">
-                {(speaking || listening) && (
-                  <>
-                    <div className={`absolute w-64 h-64 rounded-full ${speaking ? 'bg-primary/10' : 'bg-tertiary/10'} animate-ping`} />
-                    <div className={`absolute w-52 h-52 rounded-full ${speaking ? 'bg-primary/15' : 'bg-tertiary/15'} animate-pulse`} />
-                    <div className={`absolute w-40 h-40 rounded-full ${speaking ? 'bg-primary/20' : 'bg-tertiary/20'} animate-pulse`} />
-                  </>
-                )}
-                <div className={`relative w-32 h-32 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 ${
-                  speaking ? 'bg-primary scale-105' :
-                  listening ? 'bg-tertiary/80 scale-100' :
-                  botStatus === 'thinking' ? 'bg-secondary/60 scale-95' : 'bg-surface-container-high'
-                }`}>
-                  <span className={`material-symbols-outlined text-[56px] ${botStatus === 'idle' ? 'text-on-surface-variant' : 'text-white'}`}>
-                    {speaking ? 'record_voice_over' : listening ? 'hearing' : botStatus === 'thinking' ? 'psychology' : 'spa'}
-                  </span>
+              {/* Minimal voice stage: one circle that breathes with the voice, ringed by the 1s lock countdown */}
+              <div className="flex flex-col items-center gap-4">
+                <div className="relative w-44 h-44 flex items-center justify-center">
+                  {(speaking || listening) && (
+                    <span className={`absolute inset-3 rounded-full animate-ping ${speaking ? 'bg-amber-500/10' : 'bg-emerald-500/10'}`} aria-hidden="true" />
+                  )}
+                  {/* Countdown ring: fills over the 1-second silence window */}
+                  <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
+                    <circle cx="50" cy="50" r="46" fill="none" stroke="#292524" strokeWidth="2" />
+                    {listening && (
+                      <circle cx="50" cy="50" r="46" fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round"
+                        strokeDasharray={`${(silenceProgress * 289).toFixed(1)} 289`} style={{ transition: 'stroke-dasharray 100ms linear' }} />
+                    )}
+                  </svg>
+                  <div
+                    className={`relative rounded-full flex items-center justify-center border transition-all duration-150 ${
+                      speaking ? 'bg-amber-500/15 border-amber-500/60'
+                        : listening ? 'bg-emerald-700/25 border-emerald-500/60'
+                        : botStatus === 'thinking' ? 'bg-stone-800 border-stone-600'
+                        : 'bg-stone-900 border-stone-700'}`}
+                    style={{
+                      width: `${108 + (listening ? Math.min(liveVolume, 1) * 26 : 0)}px`,
+                      height: `${108 + (listening ? Math.min(liveVolume, 1) * 26 : 0)}px`,
+                    }}
+                  >
+                    <span className={`material-symbols-outlined text-[46px] ${speaking ? 'text-amber-400' : listening ? 'text-emerald-400' : 'text-stone-400'}`}>
+                      {speaking ? 'graphic_eq' : listening ? 'mic' : botStatus === 'thinking' ? 'progress_activity' : 'spa'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-center min-h-[44px]" aria-live="polite">
+                  <p className="font-serif text-lg text-stone-100">AI Vaidya</p>
+                  <p className={`text-sm ${listening ? 'text-emerald-400' : speaking ? 'text-amber-400' : 'text-stone-400'}`}>
+                    {speaking ? (lang === 'hi' ? 'बोल रहे हैं…' : 'Speaking…')
+                      : listening ? (silenceProgress > 0.05
+                        ? (lang === 'hi' ? 'रुकाव मिला — 1 सेकंड में उत्तर लॉक होगा' : 'Pause detected — locking answer…')
+                        : (lang === 'hi' ? 'सुन रहे हैं… 1 सेकंड चुप रहने पर उत्तर लॉक होगा' : 'Listening… 1s silence locks answer'))
+                      : botStatus === 'thinking' ? (voiceCaptured
+                        ? (lang === 'hi' ? '✓ आवाज़ रिकॉर्ड हो गई — प्रोसेस हो रहा है' : '✓ Voice captured — processing')
+                        : FOLLOWUP_STAGES.includes(stage)
+                          ? (lang === 'hi' ? 'AI वैद्य अगला प्रश्न तैयार कर रहे हैं…' : 'AI Vaidya is preparing a follow-up question…')
+                          : (lang === 'hi' ? 'प्रोसेस हो रहा है…' : 'Processing…'))
+                      : (lang === 'hi' ? 'तैयार' : 'Ready')}
+                  </p>
                 </div>
               </div>
 
-              <div className="text-center">
-                <p className="font-headline-sm text-headline-sm text-on-surface font-semibold">AI Vaidya</p>
-                <p className="font-label-md text-label-md text-primary">
-                  {speaking ? (lang === 'hi' ? 'बोल रहे हैं…' : 'Speaking…') :
-                   listening ? (lang === 'hi' ? 'सुन रहे हैं — बोलिए' : 'Listening — please speak') :
-                   botStatus === 'thinking' ? (lang === 'hi' ? 'प्रोसेस हो रहा है…' : 'Processing…') :
-                   (lang === 'hi' ? 'तैयार' : 'Ready')}
-                </p>
-              </div>
-
-              {/* Live mic VU meter — visual confirmation the mic is capturing sound */}
-              {listening && (
-                <div className="flex flex-col items-center gap-1.5">
-                  <div className="flex items-end gap-1 h-8">
-                    {[0.15, 0.35, 0.6, 0.85, 1.0, 0.85, 0.6, 0.35, 0.15].map((th, i) => (
-                      <div key={i}
-                        className={`w-1.5 rounded-full transition-all duration-75 ${liveVolume >= th ? 'bg-green-500' : 'bg-green-500/20'}`}
-                        style={{ height: `${8 + th * 24}px`, opacity: liveVolume >= th ? 1 : 0.4 }} />
-                    ))}
-                  </div>
-                  <span className="font-label-sm text-label-sm text-green-600">
-                    {silenceProgress > 0.05
-                      ? (lang === 'hi' ? '⏸️ रुकने पर 1 सेकंड में अपने आप भेजा जाएगा' : '⏸️ Pause detected — sending in 1s')
-                      : liveVolume > 0.05 ? (lang === 'hi' ? '🎙️ आवाज़ मिल रही है' : '🎙️ Mic is picking up sound') : (lang === 'hi' ? 'बोलिए…' : 'Speak now…')}
-                  </span>
-                  {/* 1-second auto-lock countdown: fills while the patient is quiet */}
-                  <div className="w-40 h-1 rounded-full bg-green-500/15 overflow-hidden" aria-hidden="true">
-                    <div className="h-full bg-green-500 transition-[width] duration-100 ease-linear" style={{ width: `${Math.round(silenceProgress * 100)}%` }} />
-                  </div>
-                </div>
-              )}
-              {botStatus === 'thinking' && voiceCaptured && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-800 font-label-md text-label-md">
-                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                  {lang === 'hi' ? 'आवाज़ रिकॉर्ड हो गई — प्रोसेस हो रहा है' : 'Voice captured — processing'}
-                </span>
-              )}
-              {botStatus === 'thinking' && !voiceCaptured && FOLLOWUP_STAGES.includes(stage) && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary font-label-md text-label-md">
-                  <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
-                  {lang === 'hi' ? 'AI वैद्य अगला प्रश्न तैयार कर रहे हैं…' : 'AI Vaidya is preparing a follow-up question…'}
-                </span>
-              )}
-
-              {/* Live captions */}
+              {/* Question & answer cards */}
               <div className="w-full max-w-2xl flex flex-col gap-3">
-                <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm flex items-start gap-3 min-h-[76px]">
-                  <div className="w-8 h-8 rounded-lg bg-primary-container text-on-primary-container flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="material-symbols-outlined text-[16px]">spa</span>
+                <div className="parchment-card rounded-xl p-5 flex items-start gap-3 min-h-[76px]">
+                  <span className="w-7 h-7 rounded-full border border-amber-600/50 text-amber-500 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="material-symbols-outlined text-[15px]">spa</span>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-500/80 mb-1">
+                      {started && STAGE_LABEL[stage] ? `${STAGE_LABEL[stage].en} · ${STAGE_LABEL[stage].hi}` : 'AI Vaidya · एआई वैद्य'}
+                    </p>
+                    <p className="font-serif text-lg leading-relaxed text-stone-100">{caption || (lang === 'hi' ? 'शुरू करने के लिए नीचे बटन दबाएं।' : 'Tap the button below to begin.')}</p>
                   </div>
-                  <p className="font-body-lg text-body-lg text-on-surface leading-relaxed">{caption || (lang === 'hi' ? 'शुरू करने के लिए नीचे बटन दबाएं।' : 'Tap the button below to begin.')}</p>
                 </div>
                 {(transcript || listening) && (
-                  <div className="bg-surface-container rounded-2xl p-4 shadow-sm flex items-start gap-3 self-end max-w-[85%]">
-                    <p className="font-body-md text-body-md text-on-surface">{transcript || (lang === 'hi' ? '…' : '…')}</p>
-                    <div className="w-8 h-8 rounded-lg bg-surface-container-highest text-on-surface flex items-center justify-center shrink-0">
-                      <span className="material-symbols-outlined text-[16px]">person</span>
-                    </div>
+                  <div className="rounded-xl border border-stone-800 bg-stone-900/90 p-4 flex items-start gap-3 self-end max-w-[85%]">
+                    <p className="text-base text-stone-200">{transcript || '…'}</p>
+                    <span className="w-7 h-7 rounded-full border border-emerald-600/40 text-emerald-400 flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-[15px]">person</span>
+                    </span>
                   </div>
                 )}
               </div>
@@ -542,14 +533,14 @@ export default function TouchlessKiosk() {
               {/* Stage 1 — language selection: all 11 kiosk languages, one touch each */}
               {!started && (
                 <div className="w-full max-w-3xl flex flex-col items-center gap-3">
-                  <div className="flex items-center gap-2 text-on-surface">
-                    <span className="material-symbols-outlined text-primary text-[22px]">translate</span>
-                    <span className="font-title-md text-title-md font-semibold">अपनी भाषा चुनें · Choose Your Language</span>
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-amber-500 text-[20px]">translate</span>
+                    <span className="text-sm font-semibold uppercase tracking-wider text-amber-500">अपनी भाषा चुनें · Choose Your Language</span>
                   </div>
                   <div
                     role="radiogroup"
                     aria-label="Kiosk intake language"
-                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 w-full"
+                    className="flex flex-wrap justify-center gap-2.5 w-full"
                   >
                     {KIOSK_LANGUAGES.map((l) => {
                       const active = selectedLang === l.code;
@@ -560,19 +551,19 @@ export default function TouchlessKiosk() {
                           aria-checked={active}
                           lang={l.code}
                           onClick={() => setSelectedLang(l.code)}
-                          className={`px-4 py-3.5 rounded-2xl border-2 flex flex-col items-center gap-0.5 transition-all focus:outline-none focus:ring-4 focus:ring-primary/40 ${
+                          className={`min-w-[120px] px-5 py-2.5 rounded-full border flex flex-col items-center leading-tight transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
                             active
-                              ? 'bg-primary text-on-primary border-primary shadow-lg scale-[1.03]'
-                              : 'bg-surface-container-lowest text-on-surface border-surface-container-high hover:border-primary hover:bg-surface-container'
+                              ? 'border-amber-500 bg-amber-500/10 text-amber-300'
+                              : 'border-stone-800 bg-stone-900/90 text-stone-200 hover:border-amber-600/50'
                           }`}
                         >
-                          <span className="font-title-md text-title-md font-semibold leading-tight">{l.flag} {l.native}</span>
-                          <span className={`font-label-sm text-label-sm ${active ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>{l.name}</span>
+                          <span className="font-serif text-lg">{l.native}</span>
+                          <span className={`text-[11px] ${active ? 'text-amber-500/80' : 'text-stone-500'}`}>{l.name}</span>
                         </button>
                       );
                     })}
                   </div>
-                  <p className="font-label-md text-label-md text-on-surface-variant text-center">
+                  <p className="text-sm text-stone-400 text-center">
                     आप अपनी भाषा में बोल सकते हैं · You may speak in {languageNative(selectedLang)}
                   </p>
                 </div>
@@ -580,7 +571,7 @@ export default function TouchlessKiosk() {
 
               {/* Controls */}
               {!started ? (
-                <button onClick={begin} className="px-8 sm:px-10 py-5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-title-md text-title-md sm:font-headline-sm sm:text-headline-sm shadow-xl hover:bg-primary-container transition-all flex items-center gap-3 animate-pulse text-center">
+                <button onClick={begin} className="px-8 sm:px-10 py-4 rounded-full bg-emerald-700 hover:bg-emerald-600 text-white text-lg font-semibold transition-colors flex items-center gap-3 text-center ring-1 ring-emerald-500/40">
                   <span className="material-symbols-outlined text-[32px]">mic</span>
                   {lang === 'hi'
                     ? '🎙️ परामर्श शुरू करें — एक बार टैप करें'
@@ -590,8 +581,8 @@ export default function TouchlessKiosk() {
                 <button
                   onClick={tapMic}
                   disabled={!listening}
-                  className={`px-8 py-4 rounded-full font-title-md text-title-md shadow-lg transition-all flex items-center gap-2.5 ${
-                    listening ? 'bg-secondary text-on-secondary hover:opacity-90' : 'bg-surface-container-high text-on-surface-variant cursor-default'}`}
+                  className={`px-7 py-3 rounded-full border text-base font-semibold transition-colors flex items-center gap-2.5 ${
+                    listening ? 'border-amber-500/60 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20' : 'border-stone-800 bg-stone-900 text-stone-500 cursor-default'}`}
                 >
                   <span className="material-symbols-outlined text-[26px]">{listening ? 'stop_circle' : 'mic'}</span>
                   {listening ? (lang === 'hi' ? 'बोलकर हो गया — टैप करें' : 'Done Speaking — Tap') : (lang === 'hi' ? 'हैंड्स-फ्री सुन रहा है' : 'Hands-free active')}
@@ -603,8 +594,8 @@ export default function TouchlessKiosk() {
                 <div className="flex items-center gap-2 flex-wrap justify-center">
                   {STAGES.map((s, i) => (
                     <div key={s} className="flex flex-col items-center gap-1">
-                      <div className={`h-2.5 rounded-full transition-all ${i < stageIdx ? 'w-8 bg-emerald-600' : i === stageIdx ? 'w-8 bg-orange-500' : 'w-2.5 bg-surface-container-high'}`} />
-                      <span className={`font-label-sm text-label-sm ${i === stageIdx ? 'text-orange-600 font-semibold' : 'text-on-surface-variant'}`}>{STAGE_LABEL[s][lang]}</span>
+                      <div className={`h-1.5 rounded-full transition-all ${i < stageIdx ? 'w-8 bg-emerald-600' : i === stageIdx ? 'w-8 bg-amber-500' : 'w-2.5 bg-stone-700'}`} />
+                      <span className={`text-[11px] ${i === stageIdx ? 'text-amber-400 font-semibold' : 'text-stone-500'}`}>{STAGE_LABEL[s][lang]}</span>
                     </div>
                   ))}
                 </div>
@@ -615,7 +606,7 @@ export default function TouchlessKiosk() {
                 <div className="w-full max-w-xl flex flex-col items-center gap-4">
                   {docChoice !== 'yes' ? (
                     <div className="flex flex-col sm:flex-row items-center gap-3">
-                      <button onClick={docYes} className="px-5 py-4 rounded-2xl bg-primary text-on-primary font-title-md text-title-md shadow-lg hover:bg-primary-container transition-all flex items-center gap-2">
+                      <button onClick={docYes} className="px-5 py-4 rounded-2xl bg-emerald-700 text-white font-title-md text-title-md shadow-lg hover:bg-emerald-600 transition-all flex items-center gap-2">
                         <span className="material-symbols-outlined text-[24px]">description</span>
                         {lang === 'hi' ? '📄 हाँ, पर्ची स्कैन करें' : '📄 Yes, Scan Document'}
                       </button>
@@ -665,7 +656,7 @@ export default function TouchlessKiosk() {
                           <div className="p-3 bg-white rounded-2xl shadow-sm">
                             <QRCodeSVG value={mobileUrl} size={168} level="M" />
                           </div>
-                          <button onClick={advanceFromDocs} className="px-5 py-3 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-sm hover:bg-primary-container transition-colors flex items-center gap-1.5">
+                          <button onClick={advanceFromDocs} className="px-5 py-3 rounded-xl bg-emerald-700 text-white font-label-lg text-label-lg shadow-sm hover:bg-emerald-600 transition-colors flex items-center gap-1.5">
                             {lang === 'hi' ? 'आगे बढ़ें' : 'Continue Intake'}
                             <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                           </button>
@@ -683,7 +674,7 @@ export default function TouchlessKiosk() {
                     <div className="flex flex-wrap items-center justify-center gap-2">
                       {(KIOSK_CHIPS[stage][lang] || KIOSK_CHIPS[stage].en).map(chip => (
                         <button key={chip} onClick={() => acceptAnswer(stage, chip)}
-                          className="px-3.5 py-2 rounded-full bg-surface-container-highest hover:bg-primary hover:text-on-primary text-on-surface font-label-md text-label-md shadow-sm transition-colors">
+                          className="px-3.5 py-2 rounded-full bg-surface-container-highest hover:bg-emerald-700 hover:text-white text-on-surface font-label-md text-label-md shadow-sm transition-colors">
                           {chip}
                         </button>
                       ))}
@@ -697,7 +688,7 @@ export default function TouchlessKiosk() {
                       placeholder={lang === 'hi' ? 'शोर हो? यहाँ टाइप करके उत्तर दें…' : 'Noisy? Type your answer here…'}
                       className="flex-1 h-11 px-4 rounded-xl bg-surface-container-low text-on-surface placeholder:text-on-surface-variant font-body-md text-body-md focus:outline-none focus:bg-surface-container"
                     />
-                    <button onClick={submitTyped} className="h-11 px-4 rounded-xl bg-primary text-on-primary font-label-md text-label-md shadow-sm hover:bg-primary-container transition-colors flex items-center gap-1.5">
+                    <button onClick={submitTyped} className="h-11 px-4 rounded-xl bg-emerald-700 text-white font-label-md text-label-md shadow-sm hover:bg-emerald-600 transition-colors flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-[18px]">send</span>
                       {lang === 'hi' ? 'भेजें' : 'Send'}
                     </button>
@@ -804,7 +795,7 @@ function TokenCard({ result, lang, onReset, onDoctor }) {
               <div className="font-title-md text-title-md opacity-90">{result.triageLabel || cfg.label}</div>
             </div>
           </div>
-          <div className="text-right px-3 py-1.5 rounded-xl bg-orange-500 ring-2 ring-white/70 shadow-md">
+          <div className="text-right px-3 py-1.5 rounded-lg bg-stone-950/40 ring-1 ring-amber-400/70 text-amber-200">
             <div className="font-label-sm text-label-sm opacity-90 uppercase tracking-wider">Token</div>
             <div className="font-headline-sm text-headline-sm font-bold tracking-widest">{token}</div>
           </div>

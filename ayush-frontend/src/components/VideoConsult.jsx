@@ -158,7 +158,7 @@ export default function VideoConsult({ onClose, initialMessages = [], lang = 'en
         {/* Header */}
         <div className="bg-primary/[0.08] px-5 py-3.5 flex items-center justify-between border-b border-surface-container-high">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
+            <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-sm">
               <span className="material-symbols-outlined text-[20px]">medical_services</span>
             </div>
             <div>
@@ -338,7 +338,7 @@ export default function VideoConsult({ onClose, initialMessages = [], lang = 'en
                 </div>
                 <button
                   onClick={onClose}
-                  className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-label-md text-label-md shadow-sm hover:bg-primary-container transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-700 text-white font-label-md text-label-md shadow-sm hover:bg-emerald-600 transition-colors flex items-center gap-1.5 whitespace-nowrap"
                 >
                   <span className="material-symbols-outlined text-[16px]">done</span>
                   View Summary
@@ -347,7 +347,7 @@ export default function VideoConsult({ onClose, initialMessages = [], lang = 'en
             ) : (
               <div className="flex items-center justify-between">
                 <p className="font-body-md text-body-md text-on-surface-variant">Consultation ended.</p>
-                <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-label-md text-label-md shadow-sm hover:bg-primary-container transition-colors">
+                <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-emerald-700 text-white font-label-md text-label-md shadow-sm hover:bg-emerald-600 transition-colors">
                   Close
                 </button>
               </div>

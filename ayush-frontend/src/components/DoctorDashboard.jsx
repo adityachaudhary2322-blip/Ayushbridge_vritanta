@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ClinicalBriefingModal from './ClinicalBriefingModal';
 import PatientAdviceDrawer from './PatientAdviceDrawer';
@@ -13,53 +13,165 @@ import { patientToken } from '../utils/consultation';
 
 const API = '/api';
 
-// Compact read-only 3-pillar summary for the stream table rows.
-function PillarStack({ dosha, agni, koshtha }) {
+// Ruby / brass / stone / sage — one urgency language for the queue and the banner.
+const PRIORITY = {
+  P1: { label: 'P1 Critical', badge: 'bg-rose-700/90 text-white ring-1 ring-rose-500/60', bar: 'bg-rose-500' },
+  P2: { label: 'P2 Urgent', badge: 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-600/50', bar: 'bg-amber-500' },
+  P3: { label: 'P3 Moderate', badge: 'bg-stone-700/50 text-stone-300 ring-1 ring-stone-600/60', bar: 'bg-stone-500' },
+  P4: { label: 'P4 Routine', badge: 'bg-emerald-600/15 text-emerald-400 ring-1 ring-emerald-600/30', bar: 'bg-emerald-600' },
+};
+const priorityOf = (p) => PRIORITY[p?.triageLevel] || PRIORITY.P3;
+
+const FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'p1', label: 'Emergency P1' },
+  { id: 'waiting', label: 'Waiting' },
+  { id: 'consulted', label: 'Consulted' },
+];
+
+const clean = (v) => (v && v !== 'N/A' && v !== 'None' ? v : '');
+
+function waitLabel(ts, now) {
+  const mins = Math.max(0, Math.round((now - new Date(ts).getTime()) / 60000));
+  if (!Number.isFinite(mins)) return '—';
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  return h < 24 ? `${h}h ${mins % 60}m` : `${Math.floor(h / 24)}d`;
+}
+
+function fmtTime(ts) {
+  if (!ts) return '—';
+  try { return new Date(ts).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }); }
+  catch { return String(ts); }
+}
+
+function intakeChannels(p, hasDocs) {
+  const src = String(p.triageSource || '').toLowerCase();
+  return [
+    /sign/.test(src) && { icon: '🤟', title: 'Divyang Sign-Bridge intake' },
+    /telephon|call/.test(src) && { icon: '📞', title: 'Telephony voice consultation' },
+    /voice|kiosk/.test(src) && !/sign/.test(src) && { icon: '🗣️', title: 'Voice AI kiosk intake' },
+    hasDocs && { icon: '📄', title: 'Scanned documents attached' },
+  ].filter(Boolean);
+}
+
+function MetricPill({ icon, label, value, tone = 'stone', pulse = false }) {
+  const tones = {
+    stone: 'border-stone-700 text-stone-300',
+    amber: 'border-amber-600/40 text-amber-400',
+    rose: 'border-rose-600/50 text-rose-300 bg-rose-950/40',
+    sage: 'border-emerald-600/30 text-emerald-400',
+  };
   return (
-    <div className="flex flex-col gap-1">
-      {[['Dosha', dosha], ['Agni', agni], ['Koshtha', koshtha]].map(([k, v]) => (
-        <span key={k} className="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm w-fit">
-          <span className="text-orange-700">{k}:</span> {v}
-        </span>
-      ))}
-    </div>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs whitespace-nowrap ${tones[tone]}`}>
+      {pulse && value > 0 && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />}
+      <span aria-hidden="true">{icon}</span>
+      <span className="text-stone-400">{label}</span>
+      <strong className="tabular-nums text-stone-100">{value}</strong>
+    </span>
+  );
+}
+
+function ModuleCard({ title, icon, children, action }) {
+  return (
+    <section className="h-full rounded-xl bg-stone-900/90 border border-stone-800 p-3.5 flex flex-col gap-3 min-w-0">
+      <header className="flex items-center justify-between gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[15px]">{icon}</span>{title}
+        </h3>
+        {action}
+      </header>
+      {children}
+    </section>
   );
 }
 
 export default function DoctorDashboard() {
   const navigate = useNavigate();
-  const latestPatient = null;
   const [patients, setPatients] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [selectedId, setSelectedId] = useState(null);
+
   const [zoomUrl, setZoomUrl] = useState('');
   const [zoomLoading, setZoomLoading] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
   const [showAdvice, setShowAdvice] = useState(false);
   const [showCaseReport, setShowCaseReport] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState(null);
-  const [openDocsId, setOpenDocsId] = useState(null);   // which patient card's docs accordion is open
-  const [docModal, setDocModal] = useState(null);        // documents record shown in inspection modal
+  const [docModal, setDocModal] = useState(null);        // { fileBase64, mimeType, fileName, title }
   const [caseSheet, setCaseSheet] = useState(null);      // patient record shown in printable A4 case sheet
   const [autoPdf, setAutoPdf] = useState(false);         // open the sheet and export straight away
-  const [openRxId, setOpenRxId] = useState(null);        // which patient card's Rx builder is expanded
   const [consults, setConsults] = useState({});          // id → signed consultation, mirrored locally for instant print
-  const [uploadingId, setUploadingId] = useState(null);  // patient card currently attaching a document
+  const [uploadingId, setUploadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [cardError, setCardError] = useState({});        // id → last upload/delete error
   const [assessments, setAssessments] = useState({});    // id → physician-edited { dosha, agni, koshtha }
+  const [rxDrafts, setRxDrafts] = useState({});          // id → unsaved Rx form, kept across queue switches
 
-  useEffect(() => {
-    fetchPatients();
-    const interval = setInterval(fetchPatients, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchPatients = async () => {
+  const fetchPatients = useCallback(async () => {
+    let data = null;
     try {
       const res = await fetch(`${API}/doctor/queue`);
-      const data = await res.json();
-      if (Array.isArray(data)) setPatients(data);
-    } catch { /* ignore — keep last-known queue */ }
+      data = await res.json();
+    } catch { /* keep last-known queue */ }
+    if (Array.isArray(data)) setPatients(data);
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    // fetchPatients only sets state after its network await, never synchronously.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPatients();
+    const poll = setInterval(fetchPatients, 10000);
+    const clock = setInterval(() => setNow(Date.now()), 30000);
+    return () => { clearInterval(poll); clearInterval(clock); };
+  }, [fetchPatients]);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    await fetchPatients();
+    setNow(Date.now());
+    setRefreshing(false);
   };
+
+  const isConsulted = useCallback(
+    (p) => ['COMPLETED', 'CONSULTED'].includes(p.status) || !!consults[p.id],
+    [consults],
+  );
+
+  const metrics = useMemo(() => ({
+    total: patients.length,
+    waiting: patients.filter(p => !isConsulted(p)).length,
+    p1: patients.filter(p => p.triageLevel === 'P1').length,
+    consulted: patients.filter(isConsulted).length,
+  }), [patients, isConsulted]);
+
+  const queue = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return patients.filter(p => {
+      if (filter === 'p1' && p.triageLevel !== 'P1') return false;
+      if (filter === 'waiting' && isConsulted(p)) return false;
+      if (filter === 'consulted' && !isConsulted(p)) return false;
+      if (!q) return true;
+      return [p.name, patientToken(p), p.chiefComplaint, p.phone].some(v => String(v || '').toLowerCase().includes(q));
+    });
+  }, [patients, search, filter, isConsulted]);
+
+  // The selection survives polling; if the selected record disappears, fall back to the queue head.
+  const active = patients.find(p => p.id === selectedId) || queue[0] || null;
+
+  // The physician's on-screen pillar edits win over the stored AI read, so the Rx
+  // save and the A4 sheet both carry exactly what the doctor sees.
+  const assessmentFor = (p) => assessments[p.id] || assessmentOf(p);
+  const withConsult = (p) => (p ? {
+    ...p,
+    ...assessmentFor(p),
+    aiAssessment: aiAssessmentOf(p),
+    consultation: consults[p.id] || p.consultation,
+  } : p);
 
   const setErrorFor = (id, msg) => setCardError(prev => ({ ...prev, [id]: msg }));
 
@@ -72,8 +184,7 @@ export default function DoctorDashboard() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
       setPatients(prev => prev.filter(x => x.id !== p.id));
-      if (openRxId === p.id) setOpenRxId(null);
-      if (openDocsId === p.id) setOpenDocsId(null);
+      setSelectedId(null);
     } catch (err) {
       setErrorFor(p.id, `Delete failed: ${err.message}`);
     } finally {
@@ -93,7 +204,6 @@ export default function DoctorDashboard() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.record) throw new Error(data.error || `HTTP ${res.status}`);
       setPatients(prev => prev.map(x => (x.id === p.id ? data.record : x)));
-      setOpenDocsId(p.id);
     } catch (err) {
       setErrorFor(p.id, `Upload failed: ${err.message}`);
     } finally {
@@ -101,776 +211,397 @@ export default function DoctorDashboard() {
     }
   };
 
-  // A just-signed Rx must reach the A4 sheet before the 10s queue poll returns it.
-  // The physician's on-screen pillar edits win over the stored AI read, so the Rx
-  // save and the A4 sheet both carry exactly what the doctor sees.
-  const assessmentFor = (p) => assessments[p.id] || assessmentOf(p);
-  const withConsult = (p) => (p ? {
-    ...p,
-    ...assessmentFor(p),
-    aiAssessment: aiAssessmentOf(p),
-    consultation: consults[p.id] || p.consultation,
-  } : p);
-
-  const PRIORITY_BADGE = {
-    P1: 'bg-error-container text-on-error-container',
-    P2: 'bg-secondary-fixed text-on-secondary-fixed-variant',
-    P3: 'bg-surface-container-high text-primary',
-    P4: 'bg-surface-container-high text-tertiary',
-  };
-
-  const handleZoom = async (patient) => {
+  const handleZoom = async (p) => {
     setZoomLoading(true);
     try {
       const res = await fetch(`${API}/zoom/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: 'AYUSH Triage Consult', patientName: patient?.id || 'Patient' })
+        body: JSON.stringify({ topic: 'AYUSH Triage Consult', patientName: p?.name || 'Patient' }),
       });
       const data = await res.json();
       setZoomUrl(data.joinUrl);
-      window.open(data.joinUrl, '_blank');
+      window.open(data.joinUrl, '_blank', 'noopener');
     } catch {
-      setZoomUrl('https://zoom.us/j/demo');
+      setZoomUrl('');
     } finally {
       setZoomLoading(false);
     }
   };
 
-  const openBriefing = (p) => { setSelectedPatient(p || latestPatient); setShowBriefing(true); };
-  const openAdvice = (p) => { setSelectedPatient(p || latestPatient); setShowAdvice(true); };
-  const openCaseReport = (p) => { setSelectedPatient(p || latestPatient); setShowCaseReport(true); };
-
-  const counts = {
-    P1: patients.filter(p => p.triageLevel === 'P1').length,
-    P2: patients.filter(p => p.triageLevel === 'P2').length,
-    P3: patients.filter(p => p.triageLevel === 'P3').length,
-    P4: patients.filter(p => p.triageLevel === 'P4').length,
-  };
-
-  const totalDemo = 2 + 4 + 9 + 6;
+  const today = new Date(now);
 
   return (
-    <>
-      <div className="flex flex-col w-full">
-        {/* Physician Subheader */}
-        <div className="h-1 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-600" />
-        <section className="w-full px-4 lg:px-margin-desktop py-6 bg-surface-container-low border-b-2 border-orange-500">
-          <div className="max-w-7xl mx-auto flex flex-col xl:flex-row xl:items-center justify-between gap-5">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="relative">
-                <div className="w-14 h-14 rounded-2xl bg-orange-500 shadow-sm flex items-center justify-center text-white overflow-hidden">
-                  <span className="material-symbols-outlined text-white text-[32px]">health_and_safety</span>
-                </div>
-                <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-600 rounded-full ring-2 ring-surface-container-lowest" title="Physician Active & Verified"></span>
-              </div>
-              <div className="flex flex-col">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <h1 className="font-title-md text-title-md text-on-surface tracking-tight">Dr. Ananya Sharma, BAMS, MD (Ayurveda)</h1>
-                  <span className="px-2.5 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed font-label-sm text-label-sm inline-flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[13px]">verified_user</span>
-                    NAM Certified Tele-Clinician: AY-DL-88421
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-on-surface-variant font-label-md text-label-md">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
-                    <span className="w-2 h-2 rounded-full bg-primary -ml-3.5"></span>
-                    <span>On-Duty OPD Triage Queue: <strong className="text-on-surface">Active ({totalDemo + patients.length} Enrolled Today)</strong></span>
-                  </span>
-                  <span className="text-outline-variant">•</span>
-                  <span className="inline-flex items-center gap-1 text-tertiary">
-                    <span className="material-symbols-outlined text-[15px]">sync</span>
-                    <span>ABDM M2 Gateway Synced • Updated 45s ago</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button onClick={() => navigate('/')} className="px-3.5 py-2 rounded-xl bg-surface-container-lowest hover:bg-surface-container text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 shadow-sm">
-                <span className="material-symbols-outlined text-primary text-[18px]">home</span>
-                <span>Kiosk Home</span>
-              </button>
-              <div className="px-3.5 py-2 rounded-xl bg-surface-container-lowest shadow-sm flex items-center gap-2 text-on-surface font-label-md text-label-md">
-                <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
-                <span>Accepting Walk-ins &amp; Rural e-Sanjeevani</span>
-              </div>
-              <button className="px-3.5 py-2 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 shadow-sm">
-                <span className="material-symbols-outlined text-primary text-[18px]">tune</span>
-                <span>OPD Protocol Settings</span>
-              </button>
-              <button className="px-3.5 py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md shadow-sm transition-all flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px]">bolt</span>
-                <span>Trigger Rapid Team Handoff</span>
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* Main Clinical Cockpit */}
-        <div className="max-w-7xl mx-auto w-full px-4 lg:px-margin-desktop py-8 flex flex-col gap-8">
-
-          {/* P1–P4 Stat Cards */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="relative overflow-hidden bg-error-container/40 p-5 rounded-2xl flex flex-col justify-between shadow-sm transition-transform hover:-translate-y-0.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="w-10 h-10 rounded-xl bg-error/15 text-error flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[24px]">emergency</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-error text-on-error font-label-sm text-label-sm tracking-wider uppercase">P1 Critical</span>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-headline-lg text-headline-lg text-error">{2 + counts.P1}</span>
-                  <span className="font-title-md text-title-md text-error">Patients</span>
-                </div>
-                <span className="font-label-md text-label-md text-on-error-container block font-semibold">Urgent Allopathic Transfer</span>
-                <p className="font-body-sm text-body-sm text-on-surface-variant mt-1.5 leading-relaxed">Immediate tertiary allopathic referral required. Surgical/Cardiac red flags flagged by Sahayak AI.</p>
-              </div>
-            </div>
-            <div className="relative overflow-hidden bg-secondary-fixed/50 p-5 rounded-2xl flex flex-col justify-between shadow-sm transition-transform hover:-translate-y-0.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="w-10 h-10 rounded-xl bg-secondary/15 text-secondary flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[24px]">schedule</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-secondary text-on-secondary font-label-sm text-label-sm tracking-wider uppercase">P2 Urgent</span>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-headline-lg text-headline-lg text-secondary">{4 + counts.P2}</span>
-                  <span className="font-title-md text-title-md text-secondary">Patients</span>
-                </div>
-                <span className="font-label-md text-label-md text-on-secondary-fixed font-semibold block">Severe Acute Aggravation</span>
-                <p className="font-body-sm text-body-sm text-on-surface-variant mt-1.5 leading-relaxed">Severe acute aggravation (Pitta/Vata surge, severe pyrexia or active bleeding risk).</p>
-              </div>
-            </div>
-            <div className="relative overflow-hidden bg-surface-container-high p-5 rounded-2xl flex flex-col justify-between shadow-sm transition-transform hover:-translate-y-0.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary-container/20 text-primary flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[24px]">local_florist</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-label-sm text-label-sm tracking-wider uppercase">P3 Stable</span>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-headline-lg text-headline-lg text-primary">{9 + counts.P3}</span>
-                  <span className="font-title-md text-title-md text-primary">Patients</span>
-                </div>
-                <span className="font-label-md text-label-md text-on-surface font-semibold block">Chronic Integrative Care</span>
-                <p className="font-body-sm text-body-sm text-on-surface-variant mt-1.5 leading-relaxed">Chronic disease follow-ups, metabolic / lifestyle integrative management.</p>
-              </div>
-            </div>
-            <div className="relative overflow-hidden bg-surface-container-low p-5 rounded-2xl flex flex-col justify-between shadow-sm transition-transform hover:-translate-y-0.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="w-10 h-10 rounded-xl bg-tertiary-fixed-dim/30 text-tertiary flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[24px]">spa</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-tertiary text-on-tertiary font-label-sm text-label-sm tracking-wider uppercase">P4 Routine</span>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-headline-lg text-headline-lg text-on-surface">{6 + counts.P4}</span>
-                  <span className="font-title-md text-title-md text-on-surface">Patients</span>
-                </div>
-                <span className="font-label-md text-label-md text-on-surface font-semibold block">Shodhana &amp; Dinacharya</span>
-                <p className="font-body-sm text-body-sm text-on-surface-variant mt-1.5 leading-relaxed">Preventive Dinacharya, Prakriti wellness counseling, Rasayana therapy.</p>
-              </div>
-            </div>
-          </section>
-
-          {/* AI Clinical Guardrail Banner */}
-          <div className="rounded-2xl bg-surface-container-low p-4 pl-5 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-secondary-container flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-on-secondary-container text-[20px]">smart_toy</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="font-label-lg text-label-lg text-on-surface">Autonomous Clinical Triage Co-Pilot (Ayush Sahayak v2.4)</span>
-                <p className="font-body-sm text-body-sm text-on-surface-variant">Multi-modal evaluation combining Charaka Samhita nidana parameters with ABDM HL7-FHIR red-flag alerts.</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="px-2.5 py-1 rounded-full bg-surface-container-highest font-label-sm text-label-sm text-on-surface-variant">Dual Sign-Off Required</span>
-              <button className="text-primary font-label-md text-label-md hover:underline inline-flex items-center gap-1">
-                <span>Safety Criteria</span>
-                <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-              </button>
+    <div className="min-h-screen bg-[#0f0d0b] text-stone-100 flex flex-col">
+      {/* ── A. Institutional top bar ─────────────────────────────────────────── */}
+      <header className="sticky top-0 z-30 border-b border-stone-800 bg-stone-950/85 backdrop-blur-md">
+        <div className="h-0.5 bg-gradient-to-r from-amber-600/80 via-amber-500/40 to-emerald-700/80" />
+        <div className="px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={() => navigate('/')} title="Portal home"
+              className="w-10 h-10 shrink-0 rounded-full border border-amber-600/50 bg-amber-500/10 text-amber-500 flex items-center justify-center hover:bg-amber-500/20 transition-colors">
+              <span className="material-symbols-outlined text-[22px]">account_balance</span>
+            </button>
+            <div className="leading-tight min-w-0">
+              <p className="font-serif text-[15px] text-stone-100 truncate">राष्ट्रीय आयुर्वेद संस्थान <span className="text-stone-500">/</span> National AYUSH OPD Portal</p>
+              <p className="text-[11px] text-stone-400">Station ID: <span className="text-amber-500 font-semibold">OPD-Room 4B</span></p>
             </div>
           </div>
 
-          {/* Live Triage Queue — patient records from /api/doctor/queue */}
-          {patients.length > 0 && (
-            <section className="flex flex-col gap-4">
-              <div className="flex items-center gap-2 px-1">
-                <span className="font-headline-sm text-headline-sm text-on-surface border-l-4 border-orange-500 pl-2.5">Live Triage Queue</span>
-                <span className="px-2 py-0.5 rounded-full bg-orange-500 text-white font-label-sm text-label-sm">{patients.length} OPD Record{patients.length > 1 ? 's' : ''}</span>
-                <span className="inline-flex items-center gap-1 font-label-sm text-label-sm text-tertiary ml-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span> auto-refresh 10s
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {patients.map((p) => {
-                  const docs = p.documents;
-                  const clinical = normalizeClinicalDocs(docs);
-                  const hasDocs = clinical.hasData;
-                  const isOpen = openDocsId === p.id;
-                  const rxOpen = openRxId === p.id;
-                  const signed = consults[p.id] || p.consultation;
-                  return (
-                    <div key={p.id} className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden ring-1 ring-surface-container-high border-t-4 border-orange-500">
-                      {/* Card header: priority + demographics */}
-                      <div className="p-4 flex items-start justify-between gap-3 border-b border-surface-container-high">
-                        <div className="flex flex-col gap-1.5">
-                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-label-sm text-label-sm font-semibold w-fit ${PRIORITY_BADGE[p.triageLevel] || PRIORITY_BADGE.P3}`}>
-                            {p.surgicalAlert && <span className="w-2 h-2 rounded-full bg-error animate-ping"></span>}
-                            {p.triageLevel} — {p.triageLabel}
-                          </div>
-                          <span className="font-title-md text-title-md text-on-surface font-semibold">{p.name}</span>
-                          <span className="font-body-sm text-body-sm text-on-surface-variant">
-                            {p.age !== 'N/A' ? `${p.age}` : '—'}{p.gender !== 'N/A' ? ` • ${p.gender}` : ''}{p.phone !== 'N/A' ? ` • 📱 ${p.phone}` : ''}
-                          </span>
-                          <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-lg border border-orange-500 text-orange-700 bg-orange-50 font-label-sm text-label-sm">Token: <strong className="ml-1">{patientToken(p)}</strong></span>
-                        </div>
-                        {hasDocs && (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary font-label-sm text-label-sm shrink-0">
-                            <span className="material-symbols-outlined text-[14px]">attach_file</span> Docs
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Body */}
-                      <div className="p-4 flex flex-col gap-3">
-                        <div>
-                          <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Chief Complaint</span>
-                          <p className="font-body-md text-body-md text-on-surface font-medium">{p.chiefComplaint}</p>
-                        </div>
-
-                        {/* AYUSH triage stream — the 3 core pillars, editable by the physician */}
-                        <AyushAssessmentCard
-                          idPrefix={p.id}
-                          value={assessmentFor(p)}
-                          aiValue={aiAssessmentOf(p)}
-                          onChange={(next) => setAssessments(prev => ({ ...prev, [p.id]: next }))}
-                        />
-
-                        {p.redFlags && p.redFlags !== 'None' && (
-                          <div className="inline-flex items-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-error-container/40 text-on-error-container font-label-sm text-label-sm w-fit">
-                            <span className="material-symbols-outlined text-error text-[15px]">warning</span> {p.redFlags}
-                          </div>
-                        )}
-
-                        <DiseaseTimeline events={p.diseaseTimeline} />
-
-                        {/* Adaptive voice follow-ups asked at the kiosk */}
-                        {Array.isArray(p.followups) && p.followups.length > 0 && (
-                          <div className="flex flex-col gap-1.5 rounded-xl bg-surface-container-low p-3">
-                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide flex items-center gap-1.5">
-                              <span className="material-symbols-outlined text-primary text-[15px]">forum</span>
-                              AI Vaidya Follow-up Questions
-                            </span>
-                            {p.followups.map((f, i) => (
-                              <div key={i} className="font-body-sm text-body-sm">
-                                <div className="text-on-surface"><strong>Q{i + 1}:</strong> {f.question}</div>
-                                <div className="text-on-surface-variant pl-6">↳ {f.answer}</div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Chronic history stays visible — it is a safety flag, not an AYUSH pillar */}
-                        {p.chronic_history && p.chronic_history !== 'N/A' && (
-                          <div className="flex items-start gap-1.5 rounded-xl bg-surface-container-low p-3 font-body-sm text-body-sm">
-                            <span className="material-symbols-outlined text-[15px] text-primary mt-0.5">history</span>
-                            <span><strong className="text-on-surface">Chronic History (Purva Vyadhi):</strong> <span className="text-on-surface-variant">{p.chronic_history}</span></span>
-                          </div>
-                        )}
-
-                        {/* Meds / Labs */}
-                        {(p.meds !== 'None' || p.labs !== 'None') && (
-                          <div className="font-body-sm text-body-sm text-on-surface-variant">
-                            {p.meds !== 'None' && <div><strong className="text-on-surface">Meds:</strong> {p.meds}</div>}
-                            {p.labs !== 'None' && <div className="text-secondary"><strong>Labs:</strong> {p.labs}</div>}
-                          </div>
-                        )}
-
-                        {/* Documents accordion */}
-                        {hasDocs && (
-                          <div className="rounded-xl bg-surface-container-low overflow-hidden">
-                            <button
-                              onClick={() => setOpenDocsId(isOpen ? null : p.id)}
-                              className="w-full px-3.5 py-2.5 flex items-center justify-between gap-2 hover:bg-surface-container transition-colors"
-                            >
-                              <span className="inline-flex items-center gap-2 font-label-md text-label-md text-on-surface">
-                                <span className="material-symbols-outlined text-primary text-[18px]">folder_open</span>
-                                Prescriptions &amp; Lab Reports
-                                <span className="px-1.5 py-0.5 rounded-full bg-surface-container-high text-primary font-label-sm text-label-sm">
-                                  {clinical.reports.length > 1 ? `${clinical.reports.length} reports` : docTypeLabel(clinical.reports[0]?.documentType || docs?.ocrData?.documentType)}
-                                </span>
-                              </span>
-                              <span className="material-symbols-outlined text-on-surface-variant text-[20px]">{isOpen ? 'expand_less' : 'expand_more'}</span>
-                            </button>
-                            {isOpen && (
-                              <div className="px-3.5 pb-3.5 flex flex-col gap-3">
-                                {/* Uploaded document summary */}
-                                {clinical.reports.length > 0 && (
-                                  <div className="flex flex-col gap-1.5">
-                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                                      Uploaded Documents ({clinical.reports.length})
-                                    </span>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {clinical.reports.map((r, i) => (
-                                        <span key={r.id || i} className="inline-flex flex-col px-2.5 py-1.5 rounded-lg bg-surface-container-high text-on-surface">
-                                          <span className="font-label-sm text-label-sm font-semibold">
-                                            {docTypeLabel(r.documentType)} — {r.title || r.fileName}
-                                          </span>
-                                          <span className="font-label-sm text-label-sm text-on-surface-variant">
-                                            🕑 {docTime(r.uploadedAt)} · 💊 {r.medicines?.length || 0} · 🧪 {r.labTests?.length || 0}
-                                          </span>
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Active medications */}
-                                {clinical.medicines.length > 0 && (
-                                  <div className="flex flex-col gap-1.5">
-                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Active Medications</span>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {clinical.medicines.map((m, i) => (
-                                        <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-label-sm text-label-sm">
-                                          <span className="material-symbols-outlined text-[13px]">medication</span>
-                                          <strong>{m.name}</strong>
-                                          {m.dosage ? ` · ${m.dosage}` : ''}
-                                          {m.frequency ? ` · ${m.frequency}` : ''}
-                                          {m.instructions && (
-                                            <span className="px-1 py-0.5 rounded bg-surface-container-high text-on-surface-variant text-[10px] ml-0.5">{m.instructions}</span>
-                                          )}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Diagnostic lab matrix */}
-                                {clinical.labTests.length > 0 && (
-                                  <div className="flex flex-col gap-1.5">
-                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Scanned Lab Matrix</span>
-                                    <div className="overflow-x-auto rounded-xl ring-1 ring-surface-container-high">
-                                      <table className="w-full text-left font-body-sm text-body-sm">
-                                        <thead className="bg-surface-container-high text-on-surface-variant">
-                                          <tr>
-                                            <th className="px-2.5 py-1.5 font-semibold">Test Parameter</th>
-                                            <th className="px-2.5 py-1.5 font-semibold">Observed</th>
-                                            <th className="px-2.5 py-1.5 font-semibold">Normal Range</th>
-                                            <th className="px-2.5 py-1.5 font-semibold">Status</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {clinical.labTests.map((l, i) => {
-                                            const st = flagStyle(l.flag);
-                                            return (
-                                              <tr key={i} className="border-t border-surface-container-high">
-                                                <td className="px-2.5 py-1.5 text-on-surface">{l.testName}</td>
-                                                <td className="px-2.5 py-1.5 text-on-surface font-medium">{l.observedValue || '—'}</td>
-                                                <td className="px-2.5 py-1.5 text-on-surface-variant">{l.referenceRange || '—'}</td>
-                                                <td className="px-2.5 py-1.5">
-                                                  <span className={`inline-block px-2 py-0.5 rounded-full font-label-sm text-label-sm font-semibold ${st.chip}`}>{st.label}</span>
-                                                </td>
-                                              </tr>
-                                            );
-                                          })}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {clinical.observations && (
-                                  <div className="flex flex-col gap-1">
-                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Clinical Observations</span>
-                                    <p className="font-body-sm text-body-sm text-on-surface">{clinical.observations}</p>
-                                  </div>
-                                )}
-
-                                {/* AI diagnostic correlation */}
-                                {(p.diagnosticCorrelation || clinical.correlation) && (
-                                  <div className="flex flex-col gap-1 rounded-xl bg-tertiary-container/25 p-3">
-                                    <span className="font-label-sm text-label-sm text-on-tertiary-container uppercase tracking-wide flex items-center gap-1.5">
-                                      <span className="material-symbols-outlined text-[15px]">neurology</span>
-                                      AI Vaidya — Clinical / AYUSH Correlation
-                                    </span>
-                                    <p className="font-body-sm text-body-sm text-on-surface">{p.diagnosticCorrelation || clinical.correlation}</p>
-                                  </div>
-                                )}
-
-                                {docs?.fileBase64 && (
-                                  <button
-                                    onClick={() => setDocModal(docs)}
-                                    className="mt-1 self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm"
-                                  >
-                                    <span className="material-symbols-outlined text-primary text-[16px]">visibility</span>
-                                    Inspect Document
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Actions */}
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          <button onClick={() => openBriefing(p)} className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-label-md text-label-md flex items-center gap-1.5 shadow-sm transition-all">
-                            <span className="material-symbols-outlined text-[16px]">clinical_notes</span> Briefing
-                          </button>
-                          <button onClick={() => handleZoom(p)} disabled={zoomLoading} className="px-3 py-1.5 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
-                            <span className="material-symbols-outlined text-[15px]">videocam</span> {zoomLoading ? 'Creating…' : 'Zoom'}
-                          </button>
-                          <button onClick={() => { setAutoPdf(true); setCaseSheet(p); }} className="px-3 py-1.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md flex items-center gap-1 transition-all shadow-sm">
-                            <span className="material-symbols-outlined text-[15px]">download</span> 📥 Save / Download PDF (पीडीएफ डाउनलोड)
-                          </button>
-                          <button onClick={() => { setAutoPdf(false); setCaseSheet(p); }} className="px-3 py-1.5 rounded-xl bg-tertiary-container/50 text-on-tertiary-container hover:bg-tertiary-container font-label-md text-label-md flex items-center gap-1 transition-colors shadow-sm">
-                            <span className="material-symbols-outlined text-[15px]">print</span> Print Total Case History
-                          </button>
-                          <button onClick={() => openCaseReport(p)} className="px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors">
-                            <span className="material-symbols-outlined text-[15px]">description</span> Case Report
-                          </button>
-                          <label className={`px-3 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md flex items-center gap-1 transition-colors ${uploadingId === p.id ? 'opacity-70 pointer-events-none' : 'cursor-pointer'}`}>
-                            <span className={`material-symbols-outlined text-[15px] ${uploadingId === p.id ? 'animate-spin' : ''}`}>{uploadingId === p.id ? 'progress_activity' : 'upload_file'}</span>
-                            {uploadingId === p.id ? 'Analysing…' : 'Upload Document'}
-                            <input
-                              type="file"
-                              accept="image/*,application/pdf"
-                              className="hidden"
-                              onChange={(e) => { handleUpload(p, e.target.files?.[0]); e.target.value = ''; }}
-                            />
-                          </label>
-                          <button
-                            onClick={() => handleDelete(p)}
-                            disabled={deletingId === p.id}
-                            className="px-3 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 font-label-md text-label-md flex items-center gap-1 transition-colors shadow-sm disabled:opacity-70"
-                          >
-                            <span className="material-symbols-outlined text-[15px]">delete</span>
-                            {deletingId === p.id ? 'Deleting…' : '🗑️ Delete Record / रिकॉर्ड हटाएं'}
-                          </button>
-                        </div>
-                        {cardError[p.id] && (
-                          <span className="font-label-sm text-label-sm text-error">{cardError[p.id]}</span>
-                        )}
-
-                        {/* Physician diagnosis & prescription builder */}
-                        <button
-                          onClick={() => setOpenRxId(rxOpen ? null : p.id)}
-                          className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-on-surface flex items-center justify-between gap-2 transition-colors ring-1 ring-primary/25"
-                        >
-                          <span className="inline-flex items-center gap-2 font-label-md text-label-md font-semibold text-left">
-                            <span className="material-symbols-outlined text-primary text-[18px]">prescriptions</span>
-                            नुस्खा — Diagnosis &amp; Prescription (Rx)
-                            {signed && (
-                              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-label-sm text-label-sm">
-                                ✓ Signed
-                              </span>
-                            )}
-                          </span>
-                          <span className="material-symbols-outlined text-on-surface-variant text-[20px]">{rxOpen ? 'expand_less' : 'expand_more'}</span>
-                        </button>
-                        {rxOpen && (
-                          <DiagnosisRxPanel
-                            patient={withConsult(p)}
-                            onSaved={(c, record) => {
-                              setConsults(prev => ({ ...prev, [p.id]: c }));
-                              if (record) setPatients(prev => prev.map(x => (x.id === p.id ? record : x)));
-                            }}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* Search & Filter */}
-          <section className="flex flex-col gap-4">
-            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-              <div className="relative flex-1">
-                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[20px]">search</span>
-                <input className="w-full h-12 pl-11 pr-4 bg-surface-container-lowest rounded-xl font-body-md text-body-md text-on-surface placeholder:text-outline focus:outline-none focus:ring-2 focus:ring-primary shadow-sm" placeholder="Search patient name, ABHA ID, or symptom..." type="text" />
-              </div>
-              <div className="relative shrink-0">
-                <select className="appearance-none h-12 pl-4 pr-10 bg-surface-container-lowest rounded-xl font-label-md text-label-md text-on-surface shadow-sm focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer">
-                  <option>Urgency Score (Highest to Lowest) ▾</option>
-                  <option>Wait Time (Longest to Shortest)</option>
-                  <option>Prakriti Dominance (Vata ➔ Pitta ➔ Kapha)</option>
-                  <option>ABDM Linked Status</option>
-                </select>
-                <span className="material-symbols-outlined pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">expand_more</span>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1">
-              <button className="px-3.5 py-1.5 rounded-full bg-primary text-on-primary font-label-md text-label-md shadow-sm transition-all flex items-center gap-1.5"><span>All ({totalDemo + patients.length})</span></button>
-              <button className="px-3.5 py-1.5 rounded-full bg-surface-container-high hover:bg-error-container/60 text-error font-label-md text-label-md transition-all flex items-center gap-1.5 shadow-sm"><span className="w-2 h-2 rounded-full bg-error"></span><span>Surgical Flags ({2 + counts.P1})</span></button>
-              <button className="px-3.5 py-1.5 rounded-full bg-surface-container-high hover:bg-secondary-fixed text-on-secondary-fixed-variant font-label-md text-label-md transition-all flex items-center gap-1.5 shadow-sm"><span className="w-2 h-2 rounded-full bg-secondary"></span><span>P2 Urgent ({4 + counts.P2})</span></button>
-              <button className="px-3.5 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-md text-label-md transition-all flex items-center gap-1.5 shadow-sm">
-                <span className="material-symbols-outlined text-[16px] text-primary">videocam</span><span>Zoom Ready (5)</span>
-              </button>
-            </div>
-          </section>
-
-          {/* Demo Queue Table */}
-          <div className="w-full bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden flex flex-col">
-            <div className="px-6 py-4 bg-surface-container-low flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <span className="font-headline-sm text-headline-sm text-on-surface">Physician Triage Stream</span>
-                <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-primary font-label-sm text-label-sm">Demo Queue: 5 Active Records</span>
-              </div>
-              <div className="flex items-center gap-2 font-label-sm text-label-sm text-on-surface-variant">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary"></span>Real-time Tele-OPD feed</span>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-surface-container-high/40 text-on-surface-variant font-label-md text-label-md">
-                    <th className="py-3.5 px-5 font-semibold">Priority</th>
-                    <th className="py-3.5 px-5 font-semibold">Patient &amp; ABHA</th>
-                    <th className="py-3.5 px-5 font-semibold">Chief Complaint</th>
-                    <th className="py-3.5 px-5 font-semibold">Biomarkers</th>
-                    <th className="py-3.5 px-5 font-semibold">AYUSH 3 Pillars</th>
-                    <th className="py-3.5 px-5 text-right font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-container-high/60">
-                  {/* P1 Row */}
-                  <tr className="hover:bg-error-container/10 transition-colors">
-                    <td className="py-4 px-5 align-top">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm font-semibold shadow-xs">
-                        <span className="w-2 h-2 rounded-full bg-error animate-ping"></span>
-                        <span className="w-2 h-2 rounded-full bg-error -ml-3.5"></span>
-                        <span>P1 - Surgical Warning</span>
-                      </div>
-                      <div className="mt-2 text-error font-label-sm text-label-sm flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[15px]">timer</span><span>Wait: 3 mins</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-5 align-top">
-                      <span className="font-title-md text-title-md text-on-surface">Rameshwar Prasad</span>
-                      <span className="font-body-sm text-body-sm text-on-surface-variant block">54y Male • Gorakhpur</span>
-                    </td>
-                    <td className="py-4 px-5 align-top max-w-xs">
-                      <p className="font-body-md text-body-md text-on-surface font-medium">Severe RLQ abdominal colic x 2 days, rebound tenderness, pyrexia.</p>
-                    </td>
-                    <td className="py-4 px-5 align-top">
-                      <span className="px-2.5 py-1 rounded-lg bg-error text-on-error font-label-sm text-label-sm flex items-center gap-1 w-fit shadow-xs mb-1">
-                        <span className="material-symbols-outlined text-[15px]">priority_high</span>Appendicitis Suspicion
-                      </span>
-                      <span className="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface font-label-sm text-label-sm w-fit block">WBC: 16,500/uL</span>
-                    </td>
-                    <td className="py-4 px-5 align-top">
-                      <PillarStack dosha="Vata-Pitta" agni="Tikshna Agni (Hyper/Pitta)" koshtha="Krura Koshtha (Constipated/Hard)" />
-                    </td>
-                    <td className="py-4 px-5 align-top text-right">
-                      <div className="flex flex-col items-end gap-2">
-                        <button onClick={() => openBriefing(null)} className="px-3 py-2 rounded-xl bg-error text-on-error hover:bg-error-container hover:text-on-error-container font-label-md text-label-md font-medium flex items-center gap-1.5 shadow-sm transition-all">
-                          <span className="material-symbols-outlined text-[16px]">local_hospital</span><span>Refer Emergency</span>
-                        </button>
-                        <button onClick={() => openCaseReport(null)} className="px-3 py-1.5 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-sm text-label-sm flex items-center gap-1 transition-colors">
-                          <span className="material-symbols-outlined text-[15px]">description</span><span>Case Summary</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                  {/* P2 Row */}
-                  <tr className="hover:bg-secondary-fixed/20 transition-colors">
-                    <td className="py-4 px-5 align-top">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant font-label-sm text-label-sm font-semibold shadow-xs">
-                        <span className="w-2 h-2 rounded-full bg-secondary"></span>
-                        <span>🟠 P2 - Urgent Review</span>
-                      </div>
-                      <div className="mt-2 text-secondary font-label-sm text-label-sm flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[15px]">timer</span><span>Wait: 11 mins</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-5 align-top">
-                      <span className="font-title-md text-title-md text-on-surface">Sunita Devi</span>
-                      <span className="font-body-sm text-body-sm text-on-surface-variant block">42y Female • Varanasi</span>
-                    </td>
-                    <td className="py-4 px-5 align-top max-w-xs">
-                      <p className="font-body-md text-body-md text-on-surface font-medium">Severe uncontrolled hypertension, epistaxis, throbbing Shirashoola.</p>
-                    </td>
-                    <td className="py-4 px-5 align-top">
-                      <span className="px-2.5 py-1 rounded-lg bg-secondary-fixed text-on-secondary-fixed-variant font-label-sm text-label-sm flex items-center gap-1 w-fit mb-1">
-                        <span className="material-symbols-outlined text-[15px]">blood_pressure</span>BP: 172/106 mmHg
-                      </span>
-                      <span className="px-2 py-0.5 rounded-md bg-error-container text-on-error-container font-label-sm text-label-sm w-fit block font-medium">Herb-Drug Alert</span>
-                    </td>
-                    <td className="py-4 px-5 align-top">
-                      <PillarStack dosha="Pitta Dominant" agni="Tikshna Agni (Hyper/Pitta)" koshtha="Madhyama Koshtha (Balanced)" />
-                    </td>
-                    <td className="py-4 px-5 align-top text-right">
-                      <div className="flex flex-col items-end gap-2">
-                        <button onClick={() => openBriefing(null)} className="px-3 py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md font-medium flex items-center gap-1.5 shadow-sm transition-all">
-                          <span className="material-symbols-outlined text-[16px]">clinical_notes</span><span>Clinical Briefing</span>
-                        </button>
-                        <button onClick={() => handleZoom(null)} className="px-3 py-1.5 rounded-xl bg-secondary-container text-on-secondary-container hover:bg-secondary hover:text-on-secondary font-label-sm text-label-sm flex items-center gap-1 transition-colors" disabled={zoomLoading}>
-                          <span className="material-symbols-outlined text-[15px]">videocam</span>
-                          <span>{zoomLoading ? 'Creating...' : 'Generate Zoom Consult'}</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                  {/* P3 Row */}
-                  <tr className="hover:bg-surface-container-low transition-colors">
-                    <td className="py-4 px-5 align-top">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high text-primary font-label-sm text-label-sm font-semibold shadow-xs">
-                        <span className="w-2 h-2 rounded-full bg-primary"></span>
-                        <span>🟡 P3 - Moderate Care</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-5 align-top">
-                      <span className="font-title-md text-title-md text-on-surface">Mohd. Farooq Akhtar</span>
-                      <span className="font-body-sm text-body-sm text-on-surface-variant block">61y Male • Lucknow</span>
-                    </td>
-                    <td className="py-4 px-5 align-top max-w-xs">
-                      <p className="font-body-md text-body-md text-on-surface font-medium">Chronic Type 2 Prameha, bilateral peripheral tingling, Mandagni.</p>
-                    </td>
-                    <td className="py-4 px-5 align-top">
-                      <span className="px-2.5 py-1 rounded-lg bg-surface-container-high text-on-surface font-label-sm text-label-sm flex items-center gap-1 w-fit">HbA1c: 9.2%</span>
-                      <span className="px-2 py-0.5 rounded-md bg-surface-container text-on-surface-variant font-label-sm text-label-sm w-fit block mt-1">Metformin 1000mg + Nishamalaki</span>
-                    </td>
-                    <td className="py-4 px-5 align-top">
-                      <PillarStack dosha="Kapha-Vata" agni="Manda Agni (Sluggish/Kapha)" koshtha="Madhyama Koshtha (Balanced)" />
-                    </td>
-                    <td className="py-4 px-5 align-top text-right">
-                      <div className="flex flex-col items-end gap-2">
-                        <button onClick={() => handleZoom(null)} className="px-3.5 py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md font-medium flex items-center gap-1.5 shadow-sm transition-all" disabled={zoomLoading}>
-                          <span className="material-symbols-outlined text-[16px]">videocam</span>
-                          <span>{zoomLoading ? 'Creating...' : 'Launch Teleconsult'}</span>
-                        </button>
-                        <button onClick={() => openAdvice(null)} className="px-3 py-1 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface font-label-sm text-label-sm transition-colors">
-                          <span>Patient Advice</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div className="px-6 py-4 bg-surface-container-low flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant">
-              <div className="flex items-center gap-2">
-                <span>Showing <strong>3 of {totalDemo + patients.length}</strong> scheduled tele-triage encounters</span>
-                <span className="text-outline-variant">•</span>
-                <span className="text-tertiary">Auto-refresh every 15 seconds</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 rounded-lg bg-surface-container-lowest text-on-surface font-label-sm text-label-sm shadow-sm opacity-60 cursor-not-allowed">Previous</button>
-                <span className="px-3 py-1 font-label-sm text-label-sm font-semibold text-primary">Page 1 of 5</span>
-                <button className="px-3 py-1.5 rounded-lg bg-surface-container-lowest text-on-surface font-label-sm text-label-sm shadow-sm hover:bg-surface-container transition-colors">Next</button>
-              </div>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 lg:mx-auto">
+            <MetricPill icon="👥" label="Total Registered" value={metrics.total} />
+            <MetricPill icon="⏳" label="Waiting" value={metrics.waiting} tone="amber" />
+            <MetricPill icon="🚨" label="P1 Critical" value={metrics.p1} tone="rose" pulse />
+            <MetricPill icon="✓" label="Consulted" value={metrics.consulted} tone="sage" />
           </div>
 
-          {/* Zoom URL Display */}
-          {zoomUrl && (
-            <div className="rounded-2xl bg-primary-fixed/30 p-4 flex items-center justify-between gap-4 shadow-sm">
-              <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-primary text-[24px]">videocam</span>
-                <div>
-                  <span className="font-label-md text-label-md text-on-surface font-semibold block">Zoom Meeting Created</span>
-                  <a href={zoomUrl} target="_blank" rel="noreferrer" className="font-body-sm text-body-sm text-primary hover:underline break-all">{zoomUrl}</a>
-                </div>
-              </div>
-              <a href={zoomUrl} target="_blank" rel="noreferrer" className="px-4 py-2 rounded-xl bg-primary text-on-primary font-label-md text-label-md shadow-sm hover:bg-primary-container transition-all flex items-center gap-2 shrink-0">
-                <span className="material-symbols-outlined text-[18px]">open_in_new</span>
-                <span>Join Now</span>
-              </a>
+          <div className="flex items-center gap-2.5 ml-auto">
+            <div className="text-right leading-tight hidden sm:block">
+              <p className="text-xs font-semibold text-stone-200">Dr. Sharma, BAMS, MD (Ayur)</p>
+              <p className="text-[11px] text-stone-400 tabular-nums">
+                {today.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} · {today.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              </p>
             </div>
-          )}
-
-          {/* Safety Guardrail Bar */}
-          <section className="rounded-2xl bg-surface-container-high p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 shadow-sm">
-            <div className="flex items-start gap-3.5 max-w-3xl">
-              <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
-                <span className="material-symbols-outlined text-[22px]">policy</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="font-title-md text-title-md text-on-surface">National AYUSH Integrative Safety Guardrail</span>
-                <p className="font-body-md text-body-md text-on-surface-variant mt-1 leading-relaxed">
-                  The National Pharmacopoeia &amp; AI Triage Engine automatically cross-analyzes herb-drug interaction alerts and flags acute surgical abdomen presentations.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 shrink-0">
-              <button className="px-4 py-2.5 rounded-xl bg-surface-container-lowest hover:bg-surface-container text-on-surface font-label-md text-label-md flex items-center gap-2 shadow-sm transition-all">
-                <span className="material-symbols-outlined text-primary text-[18px]">picture_as_pdf</span>
-                <span>Export Shift Report (PDF)</span>
-              </button>
-              <button className="px-4 py-2.5 rounded-xl bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md flex items-center gap-2 shadow-sm transition-all">
-                <span className="material-symbols-outlined text-[18px]">cloud_sync</span>
-                <span>Transfer to e-Sanjeevani</span>
-              </button>
-            </div>
-          </section>
+            <span className="w-8 h-8 rounded-full bg-emerald-800 border border-emerald-600/40 text-emerald-200 text-xs font-bold flex items-center justify-center" title="Dr. Ananya Sharma — Reg. AY-DL-88421">AS</span>
+            <button onClick={refresh} title="Refresh queue"
+              className="w-9 h-9 rounded-md border border-stone-700 text-stone-300 hover:text-amber-400 hover:border-amber-600/50 flex items-center justify-center transition-colors">
+              <span className={`material-symbols-outlined text-[20px] ${refreshing ? 'animate-spin' : ''}`}>refresh</span>
+            </button>
+          </div>
         </div>
+      </header>
+
+      {/* ── B. Split workstation ─────────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col lg:flex-row lg:h-[calc(100vh-66px)] min-h-0">
+        {/* B1. Queue column */}
+        <aside className="lg:w-96 shrink-0 border-b lg:border-b-0 lg:border-r border-stone-800 bg-stone-950/60 flex flex-col max-h-[46vh] lg:max-h-none min-h-0">
+          <div className="sticky top-0 z-10 p-3 border-b border-stone-800 bg-stone-950/90 backdrop-blur-md flex flex-col gap-2">
+            <label className="relative block">
+              <span className="sr-only">Search queue</span>
+              <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-500 text-[18px]">search</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, token, complaint…"
+                className="w-full h-9 pl-9 pr-3 rounded-md bg-stone-900 border border-stone-800 text-sm text-stone-100 placeholder:text-stone-600 focus:outline-none focus:border-amber-600/60" />
+            </label>
+            <div className="flex gap-1.5 overflow-x-auto" role="tablist" aria-label="Queue filter">
+              {FILTERS.map(f => (
+                <button key={f.id} role="tab" aria-selected={filter === f.id} onClick={() => setFilter(f.id)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap border transition-colors ${
+                    filter === f.id ? 'border-amber-600/60 bg-amber-500/10 text-amber-400' : 'border-stone-800 text-stone-400 hover:text-stone-200'}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <ul className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
+            {!loaded && <li className="p-4 text-sm text-stone-500">Loading OPD queue…</li>}
+            {loaded && queue.length === 0 && (
+              <li className="p-4 text-sm text-stone-500">{patients.length ? 'No patients match this filter.' : 'No patients registered yet.'}</li>
+            )}
+            {queue.map(p => {
+              const pr = priorityOf(p);
+              const selected = active?.id === p.id;
+              const hasDocs = normalizeClinicalDocs(p.documents).hasData;
+              const done = isConsulted(p);
+              return (
+                <li key={p.id}>
+                  <button onClick={() => setSelectedId(p.id)} aria-current={selected ? 'true' : undefined}
+                    className={`relative w-full text-left rounded-lg border px-3 py-2.5 pl-4 transition-colors overflow-hidden ${
+                      selected ? 'border-amber-500/70 bg-amber-500/[0.07]' : 'border-stone-800 bg-stone-900/70 hover:border-stone-700'}`}>
+                    <span className={`absolute left-0 inset-y-0 w-1 ${selected ? 'bg-amber-500' : pr.bar} ${selected ? '' : 'opacity-60'}`} aria-hidden="true" />
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-1.5 py-px rounded border border-amber-600/40 text-[10px] font-semibold tabular-nums text-amber-400">{patientToken(p)}</span>
+                      <span className={`px-1.5 py-px rounded text-[10px] font-bold ${pr.badge} ${p.triageLevel === 'P1' ? 'animate-pulse' : ''}`}>{pr.label}</span>
+                    </div>
+                    <p className="mt-1.5 text-sm font-semibold text-stone-100 truncate">{p.name}</p>
+                    <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-stone-400">
+                      <span className="truncate">{[clean(p.age), clean(p.gender)].filter(Boolean).join(' · ') || '—'}</span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        {intakeChannels(p, hasDocs).map(c => <span key={c.icon} title={c.title} aria-label={c.title}>{c.icon}</span>)}
+                        {done
+                          ? <span className="text-emerald-400 font-semibold">✓ Consulted</span>
+                          : <span className="tabular-nums" title="Waiting since registration">⏳ {waitLabel(p.timestamp, now)}</span>}
+                      </span>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </aside>
+
+        {/* B2. Clinical workstation */}
+        <main className="flex-1 min-w-0 overflow-y-auto">
+          {!active ? (
+            <div className="h-full min-h-[50vh] flex flex-col items-center justify-center gap-2 text-stone-500 p-8 text-center">
+              <span className="material-symbols-outlined text-[44px] text-stone-700">clinical_notes</span>
+              <p className="text-sm">{loaded ? 'Select a patient from the queue to open their clinical record.' : 'Loading…'}</p>
+            </div>
+          ) : (
+            <Workstation
+              key={active.id}
+              p={active}
+              patient={withConsult(active)}
+              assessment={assessmentFor(active)}
+              onAssessment={(next) => setAssessments(prev => ({ ...prev, [active.id]: next }))}
+              consulted={isConsulted(active)}
+              rxDraft={rxDrafts[active.id]}
+              onRxDraft={(d) => setRxDrafts(prev => ({ ...prev, [active.id]: d }))}
+              onSaved={(c, record) => {
+                setConsults(prev => ({ ...prev, [active.id]: c }));
+                if (record) setPatients(prev => prev.map(x => (x.id === active.id ? record : x)));
+              }}
+              onPdf={() => { setAutoPdf(true); setCaseSheet(active); }}
+              onPrint={() => { setAutoPdf(false); setCaseSheet(active); }}
+              onDelete={() => handleDelete(active)}
+              deleting={deletingId === active.id}
+              onUpload={(file) => handleUpload(active, file)}
+              uploading={uploadingId === active.id}
+              error={cardError[active.id]}
+              onInspect={setDocModal}
+              onBriefing={() => setShowBriefing(true)}
+              onAdvice={() => setShowAdvice(true)}
+              onCaseReport={() => setShowCaseReport(true)}
+              onZoom={() => handleZoom(active)}
+              zoomLoading={zoomLoading}
+              zoomUrl={zoomUrl}
+            />
+          )}
+        </main>
       </div>
 
       {/* Modals */}
-      <ClinicalBriefingModal
-        isOpen={showBriefing}
-        onClose={() => setShowBriefing(false)}
-        patient={selectedPatient}
-        onZoom={() => handleZoom(selectedPatient)}
-      />
-      <PatientAdviceDrawer
-        isOpen={showAdvice}
-        onClose={() => setShowAdvice(false)}
-        patientData={selectedPatient}
-      />
-      <CaseReportModal
-        isOpen={showCaseReport}
-        onClose={() => setShowCaseReport(false)}
-        patient={selectedPatient}
-      />
+      <ClinicalBriefingModal isOpen={showBriefing} onClose={() => setShowBriefing(false)} patient={active} onZoom={() => handleZoom(active)} />
+      <PatientAdviceDrawer isOpen={showAdvice} onClose={() => setShowAdvice(false)} patientData={active} />
+      <CaseReportModal isOpen={showCaseReport} onClose={() => setShowCaseReport(false)} patient={active} />
 
-      {/* Printable A4 Combined Case History Sheet */}
       {caseSheet && (
         <CaseHistorySheet patient={withConsult(caseSheet)} autoDownload={autoPdf} onClose={() => { setCaseSheet(null); setAutoPdf(false); }} />
       )}
 
-      {/* Document Inspection Modal */}
       {docModal && (
         <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDocModal(null)}>
-          <div className="w-full max-w-2xl bg-surface-container-lowest rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-3.5 flex items-center justify-between border-b border-surface-container-high bg-surface-container-low">
-              <div className="flex items-center gap-2.5">
-                <span className="material-symbols-outlined text-primary text-[22px]">description</span>
-                <div>
-                  <h3 className="font-title-md text-title-md text-on-surface font-semibold">{docModal.fileName || 'Original Document'}</h3>
-                  <p className="font-label-sm text-label-sm text-on-surface-variant">{docModal.ocrData?.documentType || 'Uploaded via mobile scan'}</p>
-                </div>
+          <div className="w-full max-w-3xl bg-stone-900 border border-stone-800 rounded-xl overflow-hidden flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-stone-800">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-stone-100 truncate">{docModal.title || docModal.fileName || 'Original Document'}</h3>
+                <p className="text-[11px] text-stone-400">{docTypeLabel(docModal.documentType || docModal.ocrData?.documentType)} · {docModal.fileName}</p>
               </div>
-              <button onClick={() => setDocModal(null)} className="w-9 h-9 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface flex items-center justify-center transition-colors">
-                <span className="material-symbols-outlined text-[20px]">close</span>
+              <button onClick={() => setDocModal(null)} className="w-8 h-8 rounded-md border border-stone-700 text-stone-300 hover:text-white flex items-center justify-center" aria-label="Close">
+                <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
-            <div className="p-4 overflow-auto bg-surface/40 flex items-center justify-center">
+            <div className="p-4 overflow-auto bg-stone-950 flex items-center justify-center">
               {docModal.mimeType?.startsWith('image/') ? (
-                <img src={docModal.fileBase64} alt="original document" className="max-w-full max-h-[70vh] rounded-xl shadow-sm object-contain" />
+                <img src={docModal.fileBase64} alt={docModal.title || 'original document'} className="max-w-full max-h-[72vh] rounded-md object-contain" />
               ) : docModal.mimeType === 'application/pdf' ? (
-                <iframe src={docModal.fileBase64} title="original document" className="w-full h-[70vh] rounded-xl bg-white" />
+                <iframe src={docModal.fileBase64} title="original document" className="w-full h-[72vh] rounded-md bg-white" />
               ) : (
-                <div className="flex flex-col items-center gap-3 py-12 text-on-surface-variant">
-                  <span className="material-symbols-outlined text-[48px]">draft</span>
-                  <p className="font-body-md text-body-md">Preview unavailable for this file type.</p>
-                  <a href={docModal.fileBase64} download={docModal.fileName} className="px-4 py-2 rounded-xl bg-primary text-on-primary font-label-md text-label-md">Download</a>
+                <div className="flex flex-col items-center gap-3 py-12 text-stone-400">
+                  <span className="material-symbols-outlined text-[44px]">draft</span>
+                  <p className="text-sm">Preview unavailable for this file type.</p>
+                  <a href={docModal.fileBase64} download={docModal.fileName} className="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold">Download</a>
                 </div>
               )}
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
+  );
+}
+
+// ── Active patient workstation ────────────────────────────────────────────────
+function Workstation({
+  p, patient, assessment, onAssessment, consulted, rxDraft, onRxDraft, onSaved,
+  onPdf, onPrint, onDelete, deleting, onUpload, uploading, error, onInspect,
+  onBriefing, onAdvice, onCaseReport, onZoom, zoomLoading, zoomUrl,
+}) {
+  const pr = priorityOf(p);
+  const clinical = normalizeClinicalDocs(p.documents);
+  const abha = p.abhaAddress || p.abhaId;
+  const redFlags = clean(p.redFlags);
+  const chronic = clean(p.chronic_history);
+  const correlation = clean(p.diagnosticCorrelation) || clinical.correlation || clean(p.recommendation);
+  // Reports carry their own file; single-file legacy uploads only have the record-level one.
+  const docFiles = clinical.reports.length
+    ? clinical.reports.filter(r => r.fileBase64)
+    : (p.documents?.fileBase64 ? [p.documents] : []);
+
+  const smallBtn = 'px-2.5 py-1.5 rounded-md border border-stone-700 text-stone-300 hover:text-stone-100 hover:border-stone-600 text-xs font-medium flex items-center gap-1 transition-colors';
+
+  return (
+    <div className="p-4 lg:p-5 flex flex-col gap-4 max-w-[1500px]">
+      {/* Demographics banner */}
+      <section className="rounded-xl bg-stone-900/90 border border-stone-800 overflow-hidden">
+        <div className="p-4 flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold text-stone-100">{p.name}</h1>
+              <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${pr.badge} ${p.triageLevel === 'P1' ? 'animate-pulse' : ''}`}>
+                {pr.label}{p.surgicalAlert ? ' · Surgical alert' : ''}
+              </span>
+              {consulted && <span className="px-2 py-0.5 rounded border border-emerald-600/30 bg-emerald-600/15 text-[11px] font-semibold text-emerald-400">✓ Consulted</span>}
+            </div>
+            <dl className="mt-2 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-1.5 text-xs">
+              {[
+                ['Token', <span key="t" className="text-amber-400 font-semibold tabular-nums">{patientToken(p)}</span>],
+                ['Age / Sex', [clean(p.age), clean(p.gender)].filter(Boolean).join(' / ') || '—'],
+                ['Contact', <span key="c" className="tabular-nums">{clean(p.phone) || '—'}</span>],
+                ['Registered', <span key="r" className="tabular-nums">{fmtTime(p.timestamp)}</span>],
+                ['ABHA Address', abha ? <span key="a" className="text-emerald-400">{abha}</span> : <span key="a" className="text-stone-500">Not linked (name@abdm)</span>],
+                ['Intake', p.triageSource || '—'],
+              ].map(([k, v]) => (
+                <div key={k} className="min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wider text-stone-500">{k}</dt>
+                  <dd className="text-stone-200 truncate">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={onBriefing} className={smallBtn}><span className="material-symbols-outlined text-[15px]">clinical_notes</span>Briefing</button>
+            <button onClick={onCaseReport} className={smallBtn}><span className="material-symbols-outlined text-[15px]">description</span>Case Report</button>
+            <button onClick={onAdvice} className={smallBtn}><span className="material-symbols-outlined text-[15px]">nutrition</span>Advice</button>
+            <button onClick={onPrint} className={smallBtn}><span className="material-symbols-outlined text-[15px]">print</span>Print</button>
+            <button onClick={onZoom} disabled={zoomLoading} className={smallBtn}><span className="material-symbols-outlined text-[15px]">videocam</span>{zoomLoading ? 'Creating…' : 'Teleconsult'}</button>
+          </div>
+        </div>
+
+        <div className="px-4 py-3 border-t border-stone-800 bg-stone-950/40 flex flex-col gap-2">
+          <blockquote className="border-l-2 border-amber-500 pl-3">
+            <p className="text-[10px] uppercase tracking-wider text-stone-500">Chief Complaint</p>
+            <p className="text-[15px] text-stone-100">“{p.chiefComplaint || 'General consultation'}”</p>
+          </blockquote>
+          {(redFlags || chronic) && (
+            <div className="flex flex-wrap gap-2 text-xs">
+              {redFlags && <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-rose-600/40 bg-rose-950/40 text-rose-300"><span className="material-symbols-outlined text-[14px]">warning</span>{redFlags}</span>}
+              {chronic && <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-stone-700 text-stone-300"><span className="material-symbols-outlined text-[14px] text-amber-500">history</span>Purva Vyadhi: {chronic}</span>}
+            </div>
+          )}
+          {zoomUrl && (
+            <a href={zoomUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline break-all">Teleconsult link: {zoomUrl}</a>
+          )}
+        </div>
+      </section>
+
+      {/* 3-module grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch">
+        <ModuleCard title="Disease Progression · रोग प्रगति समय-रेखा" icon="timeline">
+          <DiseaseTimeline events={p.diseaseTimeline} bare />
+          {Array.isArray(p.followups) && p.followups.length > 0 && (
+            <div className="mt-1 pt-3 border-t border-stone-800 flex flex-col gap-2">
+              <p className="text-[10px] uppercase tracking-wider text-stone-500">AI Vaidya follow-ups</p>
+              {p.followups.map((f, i) => (
+                <div key={i} className="text-xs">
+                  <p className="text-stone-300"><span className="text-amber-500 font-semibold">Q{i + 1}</span> {f.question}</p>
+                  <p className="text-stone-400 pl-5">↳ {f.answer}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </ModuleCard>
+
+        <AyushAssessmentCard
+          idPrefix={p.id}
+          value={assessment}
+          aiValue={aiAssessmentOf(p)}
+          onChange={onAssessment}
+          correlation={correlation}
+        />
+
+        <ModuleCard
+          title="Documents & Lab Matrix"
+          icon="lab_profile"
+          action={(
+            <label className={`px-2 py-1 rounded-md border border-emerald-600/40 text-emerald-400 hover:bg-emerald-600/10 text-[11px] font-semibold flex items-center gap-1 transition-colors ${uploading ? 'opacity-60 pointer-events-none' : 'cursor-pointer'}`}>
+              <span className={`material-symbols-outlined text-[14px] ${uploading ? 'animate-spin' : ''}`}>{uploading ? 'progress_activity' : 'upload_file'}</span>
+              {uploading ? 'Analysing…' : 'Upload'}
+              <input type="file" accept="image/*,application/pdf" className="hidden"
+                onChange={(e) => { onUpload(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
+          )}
+        >
+          {clinical.reports.length > 0 || docFiles.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {(clinical.reports.length ? clinical.reports : docFiles).map((r, i) => (
+                <button key={r.id || i} onClick={() => r.fileBase64 && onInspect(r)} disabled={!r.fileBase64}
+                  title={r.fileBase64 ? 'Inspect original' : 'Original file not stored'}
+                  className="group flex items-center gap-2 max-w-full rounded-md border border-stone-700 bg-stone-950/60 pr-2.5 hover:border-amber-600/50 disabled:cursor-default transition-colors">
+                  {r.mimeType?.startsWith('image/') && r.fileBase64 ? (
+                    <img src={r.fileBase64} alt="" className="w-9 h-9 rounded-l-md object-cover" />
+                  ) : (
+                    <span className="w-9 h-9 rounded-l-md bg-stone-800 flex items-center justify-center text-stone-400">
+                      <span className="material-symbols-outlined text-[18px]">{r.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'description'}</span>
+                    </span>
+                  )}
+                  <span className="text-left min-w-0">
+                    <span className="block text-xs text-stone-200 truncate max-w-[180px]">{r.title || r.fileName || 'Document'}</span>
+                    <span className="block text-[10px] text-stone-500">{docTypeLabel(r.documentType || r.ocrData?.documentType)}{r.uploadedAt ? ` · ${docTime(r.uploadedAt)}` : ''}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-stone-500">No documents attached. Upload a prescription or lab report to extract its values.</p>
+          )}
+
+          {clinical.labTests.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-stone-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-stone-950/70 text-[10px] uppercase tracking-wider text-stone-500">
+                  <tr>
+                    <th className="px-2 py-1.5 font-semibold">Parameter</th>
+                    <th className="px-2 py-1.5 font-semibold">Observed</th>
+                    <th className="px-2 py-1.5 font-semibold">Bio. Ref. Range</th>
+                    <th className="px-2 py-1.5 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-800">
+                  {clinical.labTests.map((l, i) => {
+                    const st = flagStyle(l.flag);
+                    return (
+                      <tr key={i}>
+                        <td className="px-2 py-1.5 text-stone-300">{l.testName}</td>
+                        <td className="px-2 py-1.5 font-semibold tabular-nums text-stone-100">{l.observedValue || '—'}</td>
+                        <td className="px-2 py-1.5 tabular-nums text-stone-500">{l.referenceRange || '—'}</td>
+                        <td className="px-2 py-1.5"><span className={`inline-block px-1.5 py-px rounded text-[10px] font-bold ${st.chip}`}>{st.label}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {clinical.medicines.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-stone-500 mb-1">Existing medications</p>
+              <div className="flex flex-wrap gap-1">
+                {clinical.medicines.map((m, i) => (
+                  <span key={i} className="px-1.5 py-0.5 rounded border border-stone-700 text-[11px] text-stone-300">
+                    <strong className="text-stone-100">{m.name}</strong>{m.dosage ? ` · ${m.dosage}` : ''}{m.frequency ? ` · ${m.frequency}` : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {clinical.observations && <p className="text-xs text-stone-400 leading-relaxed">{clinical.observations}</p>}
+        </ModuleCard>
+      </div>
+
+      {error && <p className="text-xs text-rose-400">{error}</p>}
+
+      {/* Clinical action suite */}
+      <DiagnosisRxPanel
+        patient={patient}
+        draft={rxDraft}
+        onDraftChange={onRxDraft}
+        onSaved={onSaved}
+        onDownloadPdf={onPdf}
+        onDelete={onDelete}
+        deleting={deleting}
+      />
+    </div>
   );
 }

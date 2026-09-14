@@ -2,159 +2,157 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 
+function PathwayCard({ index, icon, title, hi, body, children, cta, ctaIcon, onClick, tone = 'sage' }) {
+  const ctaTone = tone === 'brass'
+    ? 'bg-amber-600 hover:bg-amber-500 text-stone-950'
+    : 'bg-emerald-700 hover:bg-emerald-600 text-white';
+  return (
+    <article className="group relative flex flex-col rounded-xl border border-stone-800 bg-stone-900/90 hover:border-amber-600/50 transition-colors overflow-hidden">
+      <div className="h-px bg-gradient-to-r from-transparent via-amber-600/60 to-transparent" />
+      <div className="p-6 flex-1 flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <span className="w-12 h-12 rounded-lg border border-amber-600/40 bg-amber-500/10 flex items-center justify-center text-[26px]" aria-hidden="true">{icon}</span>
+          <span className="text-[11px] font-semibold tabular-nums tracking-widest text-stone-600">PATHWAY 0{index}</span>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-stone-100 leading-snug">{title}</h3>
+          <p className="font-serif text-[15px] text-amber-500 mt-0.5">{hi}</p>
+        </div>
+        <p className="text-sm leading-relaxed text-stone-400">{body}</p>
+        {children}
+      </div>
+      <div className="px-6 pb-6">
+        <button onClick={onClick} className={`w-full px-4 py-2.5 rounded-md text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${ctaTone}`}>
+          <span className="material-symbols-outlined text-[19px]">{ctaIcon}</span>
+          {cta}
+        </button>
+      </div>
+    </article>
+  );
+}
+
 export default function LandingPortal() {
   const navigate = useNavigate();
   const [roomId] = useState(() => 'AYUSH-' + Date.now().toString().slice(-4));
   const teleconsultUrl = `${window.location.origin}/teleconsult?room=${roomId}`;
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-surface to-surface-container-low">
-
-      {/* Nav — saffron → emerald accent strip over a saffron rule */}
-      <div className="h-1 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-600" />
-      <header className="w-full px-4 sm:px-8 h-16 flex items-center justify-between border-b-2 border-orange-500 bg-surface-container-lowest/90 backdrop-blur-sm">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-sm">
-            <span className="material-symbols-outlined text-[20px]">spa</span>
+    <div className="min-h-screen flex flex-col bg-[#0f0d0b] text-stone-100">
+      {/* Institutional nav */}
+      <header className="sticky top-0 z-20 border-b border-stone-800 bg-stone-950/85 backdrop-blur-md">
+        <div className="h-0.5 bg-gradient-to-r from-amber-600/80 via-amber-500/40 to-emerald-700/80" />
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="w-9 h-9 shrink-0 rounded-full border border-amber-600/50 bg-amber-500/10 text-amber-500 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[20px]">spa</span>
+            </span>
+            <div className="leading-tight min-w-0">
+              <p className="text-sm font-semibold text-stone-100 truncate">AyushBridge MediKiosk</p>
+              <p className="font-serif text-[12px] text-stone-400 truncate">आयुष स्वास्थ्य सहायक · Ministry of AYUSH</p>
+            </div>
           </div>
-          <span className="font-title-md text-title-md text-on-surface font-semibold">AYUSH Swasthya Sahayak</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => navigate('/text-intake')} className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors">
-            <span className="material-symbols-outlined text-[18px]">keyboard</span>Text Intake
-          </button>
-          <button onClick={() => navigate('/doctor')} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-label-md text-label-md transition-colors shadow-sm">
-            <span className="material-symbols-outlined text-[18px]">stethoscope</span>
-            <span className="hidden sm:inline">Doctor Dashboard</span>
-          </button>
+          <nav className="flex items-center gap-2">
+            <button onClick={() => navigate('/text-intake')} className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-stone-700 text-stone-300 hover:text-stone-100 hover:border-stone-600 text-sm font-medium transition-colors">
+              <span className="material-symbols-outlined text-[18px]">keyboard</span>Text Intake
+            </button>
+            <button onClick={() => navigate('/doctor')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold transition-colors">
+              <span className="material-symbols-outlined text-[18px]">stethoscope</span>
+              <span className="hidden sm:inline">Doctor Workstation</span>
+            </button>
+          </nav>
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-10 flex flex-col gap-12">
-
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16 flex flex-col gap-14">
         {/* Hero */}
-        <section className="flex flex-col items-center text-center gap-5 pt-6">
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-orange-500 bg-orange-50 text-orange-700 font-label-md text-label-md">
-            <span className="material-symbols-outlined text-[16px]">verified</span>
-            Ministry of AYUSH · AI-assisted Tele-Triage
+        <section className="flex flex-col items-center text-center gap-5">
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-amber-600/40 bg-amber-500/10 text-amber-400 text-xs font-semibold tracking-wide">
+            <span className="material-symbols-outlined text-[15px]">verified</span>
+            GOVERNMENT OF INDIA · MINISTRY OF AYUSH · OPD DIGITAL INTAKE
           </span>
-          <h1 className="font-headline-lg text-headline-lg sm:text-[42px] leading-tight text-on-surface font-bold max-w-3xl">
-            <span className="text-orange-600">AYUSH Swasthya Sahayak</span> — AI Clinical Triage &amp; <span className="text-emerald-700">Teleconsultation</span>
+          <h1 className="max-w-4xl text-3xl sm:text-5xl font-semibold leading-tight tracking-tight">
+            <span className="font-serif text-amber-500">AyushBridge MediKiosk</span>
+            <span className="block mt-2 text-stone-100 text-2xl sm:text-4xl">AI-Powered Multimodal Intake &amp; Triaging System</span>
           </h1>
-          <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
-            A multilingual, voice-first triage assistant that registers patients hands-free, reads
-            their prescriptions, and routes them to an AYUSH physician by clinical priority.
+          <p className="max-w-2xl text-base leading-relaxed text-stone-400">
+            Voice, telephony and sign-language intake in 11 Indian languages. Every patient is triaged P1–P4,
+            assessed on the three Ayurvedic pillars — <span className="font-serif text-stone-200">Dosha, Agni, Koshtha</span> — and
+            handed to the attending Vaidya with a verified clinical record.
           </p>
         </section>
 
-        {/* ── Mode selection — three distinct pathways ── */}
-        <section className="flex flex-col gap-5">
-          <div className="text-center">
-            <h2 className="font-headline-sm text-headline-sm text-on-surface font-bold">Choose your pathway</h2>
-            <p className="font-body-md text-body-md text-on-surface-variant mt-1">अपना माध्यम चुनें — तीनों में से कोई एक</p>
+        {/* Pathways */}
+        <section aria-labelledby="pathways" className="flex flex-col gap-5">
+          <div className="flex items-end justify-between gap-4 border-b border-stone-800 pb-3">
+            <div>
+              <h2 id="pathways" className="text-sm font-semibold uppercase tracking-wider text-amber-500">Choose an intake pathway</h2>
+              <p className="font-serif text-sm text-stone-400">अपना माध्यम चुनें</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
+            <PathwayCard
+              index={1} icon="🗣️"
+              title="Voice AI Clinical Kiosk" hi="आवाज आधारित कियोस्क"
+              body="Walk-in OPD intake, fully hands-free. The AI Vaidya asks two adaptive clinical follow-ups, locks each answer after 1 second of silence, and reads uploaded prescriptions."
+              cta="Launch Kiosk" ctaIcon="local_hospital" onClick={() => navigate('/kiosk')}
+            />
 
-            {/* 1 · Voice kiosk */}
-            <article className="group bg-surface-container-lowest rounded-3xl shadow-sm hover:shadow-lg ring-1 ring-surface-container-high hover:ring-primary/40 transition-all p-6 flex flex-col gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-[30px]">🗣️</div>
-              <div className="flex-1 flex flex-col gap-1.5">
-                <h3 className="font-title-lg text-title-lg text-on-surface font-bold leading-tight">
-                  Touchless Voice AI Kiosk
-                </h3>
-                <p className="font-title-md text-title-md text-primary font-semibold leading-tight">आवाज आधारित कियोस्क</p>
-                <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed mt-1">
-                  Walk-in OPD patients · Autonomous Hindi/English voice intake &amp; Rogi Pariksha
-                </p>
-              </div>
-              <button
-                onClick={() => navigate('/kiosk')}
-                className="w-full px-5 py-3.5 rounded-2xl bg-emerald-600 text-white font-label-lg text-label-lg shadow-sm hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
-              >
-                <span className="material-symbols-outlined text-[20px]">local_hospital</span>
-                Launch Kiosk
-              </button>
-            </article>
-
-            {/* 2 · Telephony voice consultation */}
-            <article className="group bg-surface-container-lowest rounded-3xl shadow-sm hover:shadow-lg ring-1 ring-surface-container-high hover:ring-primary/40 transition-all p-6 flex flex-col gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-secondary-container/40 text-on-secondary-container flex items-center justify-center text-[30px]">📞</div>
-              <div className="flex-1 flex flex-col gap-1.5">
-                <h3 className="font-title-lg text-title-lg text-on-surface font-bold leading-tight">
-                  📞 Telephony Voice Consultation
-                </h3>
-                <p className="font-title-md text-title-md text-primary font-semibold leading-tight">टेली-परामर्श (वॉयस कॉल)</p>
-                <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed mt-1">
-                  High-fidelity voice consultation. In live hospital deployment, this operates over standard
-                  cellular/PSTN telephone lines (IVR/Toll-Free) for patients without internet, currently
-                  operating via web-voice for presentation.
-                </p>
-                <div className="mt-2 flex items-center gap-3">
-                  <div className="p-2 bg-white rounded-xl shadow-sm ring-1 ring-surface-container-high shrink-0">
-                    <QRCodeSVG value={teleconsultUrl} size={92} level="M" />
-                  </div>
-                  <p className="font-label-sm text-label-sm text-on-surface-variant">
-                    Scan with your phone camera — the voice call opens in the mobile browser.
-                    <br />
-                    <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-orange-500 text-white font-semibold">Line {roomId}</span>
-                  </p>
+            <PathwayCard
+              index={2} icon="📞"
+              title="Telephony Voice Consultation" hi="टेली-परामर्श — वॉयस कॉल"
+              body="High-fidelity voice consultation. In live hospital deployment this runs over standard cellular/PSTN lines (IVR/Toll-Free) for patients without internet; it currently runs over web-voice for presentation."
+              cta="Start Voice Call" ctaIcon="call" onClick={() => navigate(`/teleconsult?room=${roomId}`)}
+            >
+              <div className="flex items-center gap-3 rounded-lg border border-stone-800 bg-stone-950/60 p-2.5">
+                <div className="p-1.5 bg-white rounded-md shrink-0">
+                  <QRCodeSVG value={teleconsultUrl} size={76} level="M" />
                 </div>
-              </div>
-              <button
-                onClick={() => navigate(`/teleconsult?room=${roomId}`)}
-                className="w-full px-5 py-3.5 rounded-2xl bg-emerald-600 text-white font-label-lg text-label-lg shadow-sm hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <span className="material-symbols-outlined text-[20px]">call</span>
-                Start Voice Call on this Screen
-              </button>
-            </article>
-
-            {/* 3 · Sign language */}
-            <article className="group bg-surface-container-lowest rounded-3xl shadow-sm hover:shadow-lg ring-1 ring-tertiary-container hover:ring-tertiary transition-all p-6 flex flex-col gap-4 relative overflow-hidden">
-              <span className="absolute top-4 right-4 px-2.5 py-0.5 rounded-full bg-orange-500 text-white font-label-sm text-label-sm font-semibold">Beta</span>
-              <div className="w-14 h-14 rounded-2xl bg-tertiary-container/40 text-on-tertiary-container flex items-center justify-center text-[30px]">🤟</div>
-              <div className="flex-1 flex flex-col gap-1.5">
-                <h3 className="font-title-lg text-title-lg text-on-surface font-bold leading-tight">
-                  Divyang Jan — Sign Language Mode
-                </h3>
-                <p className="font-title-md text-title-md text-primary font-semibold leading-tight">सांकेतिक भाषा मोड</p>
-                <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed mt-1">
-                  Speech &amp; hearing impaired · Touchless gesture &amp; visual triage · Multi-report upload
+                <p className="text-xs leading-relaxed text-stone-400">
+                  Scan with a phone camera — the call opens in the mobile browser.
+                  <span className="block mt-1 text-amber-400 font-semibold tabular-nums">Line {roomId}</span>
                 </p>
               </div>
-              <button
-                onClick={() => navigate('/sign-bridge')}
-                className="w-full px-5 py-3.5 rounded-2xl bg-tertiary text-on-tertiary font-label-lg text-label-lg shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-2"
-              >
-                <span className="material-symbols-outlined text-[20px]">sign_language</span>
-                Open SignBridge
-              </button>
-            </article>
+            </PathwayCard>
+
+            <PathwayCard
+              index={3} icon="🤟" tone="brass"
+              title="Divyang Jan Sign-Bridge" hi="दिव्यांग जन सांकेतिक भाषा कियोस्क"
+              body="For speech and hearing impaired patients: touchless gesture selection tracked on-device, large visual symptom tiles, and multi-report document upload."
+              cta="Open Sign-Bridge" ctaIcon="sign_language" onClick={() => navigate('/sign-bridge')}
+            />
           </div>
         </section>
 
-        {/* About */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {/* Capabilities */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-px rounded-xl overflow-hidden border border-stone-800 bg-stone-800">
           {[
-            { icon: 'record_voice_over', title: 'Sarvam Multilingual Voice Loop', body: 'Hands-free Hindi & English intake using Sarvam Bulbul v3 TTS and Saaras v3 STT — no typing, no taps.' },
-            { icon: 'document_scanner', title: 'Touchless Prescription OCR', body: 'Patients scan a QR to upload prescriptions or lab reports from their phone; Gemini Vision extracts medicines and abnormal labs.' },
-            { icon: 'stethoscope', title: 'Doctor Priority Dashboard', body: 'Every intake is triaged P1–P4 with Dosha, Agni & Koshtha assessment and a printable A4 case-history sheet.' },
+            { icon: 'record_voice_over', title: 'Multilingual Voice Loop', body: 'Sarvam Bulbul v3 speech and Saaras v3 transcription across 11 Indian languages.' },
+            { icon: 'document_scanner', title: 'Touchless Record Scan', body: 'Patients upload prescriptions and lab reports from their phone; values are extracted into a lab matrix.' },
+            { icon: 'stethoscope', title: 'Physician EMR Workstation', body: 'P1–P4 queue, disease timeline, editable 3-pillar Pariksha, Rx builder and A4 case sheet.' },
           ].map(c => (
-            <div key={c.title} className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm ring-1 ring-surface-container-high flex flex-col gap-3">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <span className="material-symbols-outlined text-[26px]">{c.icon}</span>
-              </div>
-              <h3 className="font-title-md text-title-md text-on-surface font-semibold">{c.title}</h3>
-              <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">{c.body}</p>
+            <div key={c.title} className="bg-stone-900/95 p-5 flex flex-col gap-2">
+              <span className="material-symbols-outlined text-emerald-500 text-[24px]">{c.icon}</span>
+              <h3 className="text-sm font-semibold text-stone-100">{c.title}</h3>
+              <p className="text-sm leading-relaxed text-stone-400">{c.body}</p>
             </div>
           ))}
         </section>
-
-        <footer className="text-center font-label-sm text-label-sm text-on-surface-variant pb-4">
-          AYUSH Swasthya Sahayak · Sarvam AI · Gemini 3.6 Flash · Prototype for demonstration
-        </footer>
       </main>
+
+      {/* Status footer */}
+      <footer className="border-t border-stone-800 bg-stone-950/80">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-stone-500">
+          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+            <span className="inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />ABDM FHIR R4 Ready</span>
+            <span aria-hidden="true">•</span>
+            <span>DPDP Act 2023 Ephemeral Protocol</span>
+            <span aria-hidden="true">•</span>
+            <span>Ministry of AYUSH Aligned</span>
+          </p>
+          <p className="text-stone-600">AyushBridge MediKiosk · Prototype</p>
+        </div>
+      </footer>
     </div>
   );
 }

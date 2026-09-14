@@ -4,63 +4,66 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
-      // National AYUSH palette — every component reads these tokens, so the theme lives here:
-      //   primary   = Emerald (healing green, primary actions)   emerald-600 / hover emerald-700
-      //   secondary = Saffron (alerts, tokens, triage highlights) orange-600 / orange-500
-      //   tertiary  = Deep teal (supporting accent)               teal-700
-      //   surfaces  = warm stone neutrals that sit well with saffron
+      // Ayurvedic Clinical HealthOS palette (dark foundation). Every component reads these
+      // tokens, so the whole platform's colour architecture lives here:
+      //   surfaces  = warm espresso / sheesham stone — canvas #0f0d0b, cards stone-900
+      //   primary   = healing forest sage / emerald (clinical commits, balanced states)
+      //   secondary = burnished brass / saffron (clinical headers, markers, priority)
+      //   tertiary  = muted sage (supporting accent)
+      //   on-*      = parchment & ivory text (stone-100 / stone-400)
+      // Surface steps get LIGHTER as they nest: canvas < lowest (cards) < low < … < highest.
       colors: {
         primary: '#059669',
         'on-primary': '#ffffff',
         'primary-container': '#047857',
         'on-primary-container': '#d1fae5',
-        'primary-fixed': '#d1fae5',
-        'primary-fixed-dim': '#6ee7b7',
-        'on-primary-fixed': '#022c22',
-        'on-primary-fixed-variant': '#065f46',
-        'inverse-primary': '#6ee7b7',
+        'primary-fixed': '#064e3b',
+        'primary-fixed-dim': '#34d399',
+        'on-primary-fixed': '#d1fae5',
+        'on-primary-fixed-variant': '#6ee7b7',
+        'inverse-primary': '#047857',
         'surface-tint': '#059669',
 
-        secondary: '#ea580c',
-        'on-secondary': '#ffffff',
-        'secondary-container': '#fed7aa',
-        'on-secondary-container': '#7c2d12',
-        'secondary-fixed': '#ffedd5',
-        'secondary-fixed-dim': '#fdba74',
-        'on-secondary-fixed': '#431407',
-        'on-secondary-fixed-variant': '#9a3412',
+        secondary: '#f59e0b',
+        'on-secondary': '#1c1917',
+        'secondary-container': '#451a03',
+        'on-secondary-container': '#fcd34d',
+        'secondary-fixed': '#3b2208',
+        'secondary-fixed-dim': '#d97706',
+        'on-secondary-fixed': '#fef3c7',
+        'on-secondary-fixed-variant': '#fcd34d',
 
-        tertiary: '#0f766e',
-        'on-tertiary': '#ffffff',
-        'tertiary-container': '#5eead4',
-        'on-tertiary-container': '#134e4a',
-        'tertiary-fixed': '#ccfbf1',
-        'tertiary-fixed-dim': '#5eead4',
-        'on-tertiary-fixed': '#042f2e',
-        'on-tertiary-fixed-variant': '#115e59',
+        tertiary: '#8fb996',
+        'on-tertiary': '#0f0d0b',
+        'tertiary-container': '#1f3a2b',
+        'on-tertiary-container': '#c7e3cc',
+        'tertiary-fixed': '#1f3a2b',
+        'tertiary-fixed-dim': '#8fb996',
+        'on-tertiary-fixed': '#dcfce7',
+        'on-tertiary-fixed-variant': '#bbf7d0',
 
-        error: '#ba1a1a',
-        'on-error': '#ffffff',
-        'error-container': '#ffdad6',
-        'on-error-container': '#93000a',
+        error: '#f87171',
+        'on-error': '#1c1917',
+        'error-container': '#4c0519',
+        'on-error-container': '#fecdd3',
 
-        background: '#fffbf5',
-        'on-background': '#1c1917',
-        surface: '#fffbf5',
-        'surface-bright': '#fffbf5',
-        'surface-dim': '#e5d9c7',
-        'surface-container-lowest': '#ffffff',
-        'surface-container-low': '#fdf6ec',
-        'surface-container': '#f8efe2',
-        'surface-container-high': '#f2e7d8',
-        'surface-container-highest': '#ebdfcd',
-        'surface-variant': '#ebdfcd',
-        'on-surface': '#1c1917',
-        'on-surface-variant': '#57534e',
+        background: '#0f0d0b',
+        'on-background': '#f5f5f4',
+        surface: '#0f0d0b',
+        'surface-bright': '#292524',
+        'surface-dim': '#0c0a09',
+        'surface-container-lowest': '#1c1917',
+        'surface-container-low': '#231f1c',
+        'surface-container': '#292524',
+        'surface-container-high': '#312c28',
+        'surface-container-highest': '#44403c',
+        'surface-variant': '#292524',
+        'on-surface': '#f5f5f4',
+        'on-surface-variant': '#a8a29e',
         outline: '#78716c',
-        'outline-variant': '#d6d3d1',
-        'inverse-surface': '#292524',
-        'inverse-on-surface': '#fafaf9',
+        'outline-variant': '#44403c',
+        'inverse-surface': '#e7e5e4',
+        'inverse-on-surface': '#1c1917',
       },
       borderRadius: {
         DEFAULT: '0.25rem',
@@ -81,6 +84,8 @@ export default {
         'gutter-lg': '1.5rem',
       },
       fontFamily: {
+        // AYUSH terminology accents; numbers and lab values stay in the sans stack.
+        serif: ['Source Serif 4', 'Georgia', 'serif'],
         'label-md': ['Plus Jakarta Sans', 'sans-serif'],
         'label-lg': ['Plus Jakarta Sans', 'sans-serif'],
         'headline-lg-mobile': ['Source Serif 4', 'serif'],

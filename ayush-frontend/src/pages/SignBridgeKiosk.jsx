@@ -56,9 +56,9 @@ const GENDERS = [
 
 const PRIORITY_CONFIG = {
   P1: { label: 'Critical', ring: 'bg-red-500 text-white',        note: { en: 'Emergency — you will be seen immediately', hi: 'आपातकाल — आपको तुरंत देखा जाएगा' } },
-  P2: { label: 'Urgent',   ring: 'bg-orange-500 text-white',  note: { en: 'Urgent — you will be seen very soon',      hi: 'अत्यावश्यक — आपको जल्दी देखा जाएगा' } },
-  P3: { label: 'Moderate', ring: 'bg-emerald-400 text-slate-900', note: { en: 'Standard consultation — please wait',     hi: 'सामान्य परामर्श — कृपया प्रतीक्षा करें' } },
-  P4: { label: 'Routine',  ring: 'bg-sky-400 text-slate-900',    note: { en: 'Routine visit — please wait',              hi: 'नियमित परामर्श — कृपया प्रतीक्षा करें' } },
+  P2: { label: 'Urgent',   ring: 'bg-amber-500 text-stone-950',  note: { en: 'Urgent — you will be seen very soon',      hi: 'अत्यावश्यक — आपको जल्दी देखा जाएगा' } },
+  P3: { label: 'Moderate', ring: 'bg-emerald-400 text-stone-900', note: { en: 'Standard consultation — please wait',     hi: 'सामान्य परामर्श — कृपया प्रतीक्षा करें' } },
+  P4: { label: 'Routine',  ring: 'bg-sky-400 text-stone-900',    note: { en: 'Routine visit — please wait',              hi: 'नियमित परामर्श — कृपया प्रतीक्षा करें' } },
 };
 
 const DOC_BADGE = {
@@ -393,56 +393,56 @@ export default function SignBridgeKiosk() {
   const liveShape = live?.shape;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[#0f0d0b] text-stone-100 flex flex-col">
 
       {/* ── Header ── */}
-      <header className="w-full px-4 sm:px-6 h-16 flex items-center justify-between border-b-2 border-orange-500 bg-slate-950">
+      <header className="w-full px-4 sm:px-6 h-16 flex items-center justify-between border-b border-stone-800 bg-stone-950/85 backdrop-blur-md sticky top-0 z-20">
         <div className="flex items-center gap-3 min-w-0">
-          <button onClick={() => navigate('/')} className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center shrink-0" aria-label="Home">
+          <button onClick={() => navigate('/')} className="w-10 h-10 rounded-xl bg-stone-800 hover:bg-stone-700 flex items-center justify-center shrink-0" aria-label="Home">
             <span className="material-symbols-outlined text-[22px]">home</span>
           </button>
-          <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center text-[20px] shrink-0">🤟</div>
+          <div className="w-10 h-10 rounded-full border border-amber-600/50 bg-amber-500/10 flex items-center justify-center text-[20px] shrink-0">🤟</div>
           <div className="leading-tight min-w-0">
             <p className="text-base sm:text-lg font-bold truncate">SignBridge · Divyang Jan</p>
-            <p className="text-xs text-emerald-300 truncate">सांकेतिक भाषा त्रिआज · Beta</p>
+            <p className="font-serif text-xs text-amber-500/90 truncate">सांकेतिक भाषा त्रिआज · Beta</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
-            className="px-3 sm:px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-base font-bold flex items-center gap-1.5"
+            className="px-3 sm:px-4 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-base font-bold flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-[20px]">translate</span>
             {lang === 'en' ? 'हिंदी' : 'EN'}
           </button>
           <button
             onClick={() => setDrawerOpen(true)}
-            className="px-3 sm:px-4 py-2.5 rounded-xl bg-orange-500 text-white hover:bg-orange-600 text-base font-bold flex items-center gap-1.5"
+            className="px-3 sm:px-4 py-2.5 rounded-xl bg-amber-600 text-stone-950 hover:bg-amber-500 text-base font-bold flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-[20px]">qr_code_2</span>
             <span className="hidden sm:inline">{t('Reports', 'रिपोर्ट')}</span>
-            {reports.length > 0 && <span className="px-1.5 rounded-full bg-slate-900 text-orange-400 text-sm">{reports.length}</span>}
+            {reports.length > 0 && <span className="px-1.5 rounded-full bg-stone-900 text-amber-400 text-sm">{reports.length}</span>}
           </button>
         </div>
       </header>
 
       {/* ── Stepper ── */}
-      <nav className="w-full px-4 sm:px-6 py-3 bg-slate-950/60 border-b border-slate-800">
+      <nav className="w-full px-4 sm:px-6 py-3 bg-stone-950/60 border-b border-stone-800">
         <ol className="max-w-6xl mx-auto flex items-center gap-1.5 sm:gap-3">
           {STAGES.map((s, i) => {
             const done = i < stageIndex;
             const active = i === stageIndex;
             return (
               <li key={s} className="flex-1 flex items-center gap-1.5 sm:gap-2 min-w-0">
-                <span className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${
-                  done ? 'bg-emerald-600 text-white' : active ? 'bg-orange-500 text-white ring-4 ring-orange-500/30' : 'bg-slate-700 text-slate-400'
+                <span className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-sm font-black shrink-0 transition-all duration-300 ${
+                  done ? 'bg-emerald-700 text-white ring-1 ring-emerald-500/60' : active ? 'bg-amber-500/15 text-amber-300 ring-2 ring-amber-500' : 'bg-stone-900 text-stone-500 ring-1 ring-stone-700'
                 }`}>
                   {done ? '✓' : i + 1}
                 </span>
-                <span className={`text-xs sm:text-sm font-bold truncate ${active ? 'text-orange-400' : done ? 'text-emerald-300' : 'text-slate-500'}`}>
+                <span className={`text-xs sm:text-sm font-bold truncate ${active ? 'text-amber-400' : done ? 'text-emerald-300' : 'text-stone-500'}`}>
                   {t(STEP_LABELS[s].en, STEP_LABELS[s].hi)}
                 </span>
-                {i < STAGES.length - 1 && <span className={`hidden sm:block flex-1 h-1 rounded-full ${done ? 'bg-emerald-500' : 'bg-slate-700'}`} />}
+                {i < STAGES.length - 1 && <span className={`hidden sm:block flex-1 h-px transition-colors duration-500 ${done ? 'bg-emerald-600' : 'bg-stone-700'}`} />}
               </li>
             );
           })}
@@ -451,13 +451,13 @@ export default function SignBridgeKiosk() {
 
       {/* Live attached-document pills — visible on every stage */}
       {reports.length > 0 && (
-        <div className="w-full px-4 sm:px-6 py-2 bg-emerald-500/15 border-b-2 border-emerald-500/40">
+        <div className="w-full px-4 sm:px-6 py-2 bg-emerald-950/40 border-b border-emerald-600/30">
           <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2">
             <span className="text-base font-black text-emerald-300">
               ✓ {reports.length} {t(`Document${reports.length === 1 ? '' : 's'} Attached`, 'दस्तावेज़ जुड़े')}:
             </span>
             {reports.map((r, i) => (
-              <span key={r.id || i} className="px-2.5 py-0.5 rounded-lg bg-slate-800 text-sm font-black">
+              <span key={r.id || i} className="px-2.5 py-0.5 rounded-lg bg-stone-800 text-sm font-black">
                 {DOC_BADGE[r.documentType] || DOC_BADGE.MIXED}
               </span>
             ))}
@@ -469,7 +469,7 @@ export default function SignBridgeKiosk() {
 
         {/* ── Camera column ── */}
         <aside className="flex flex-col gap-3 lg:sticky lg:top-5 lg:self-start">
-          <div className="relative rounded-2xl overflow-hidden bg-black border-2 border-slate-700">
+          <div className="relative rounded-2xl overflow-hidden bg-black border-2 border-stone-700">
             <div className="relative aspect-[4/3] w-full">
               <video ref={videoRef} autoPlay playsInline muted
                 className={`absolute inset-0 h-full w-full object-cover scale-x-[-1] ${cameraOn ? 'opacity-100' : 'opacity-0'}`} />
@@ -477,16 +477,16 @@ export default function SignBridgeKiosk() {
 
               {!cameraOn && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">
-                  <span className="material-symbols-outlined text-[52px] text-slate-500">videocam_off</span>
-                  <p className="text-base font-bold text-slate-300">{t('Camera is off', 'कैमरा बंद है')}</p>
-                  <p className="text-sm text-slate-400">{t('You can still tap the cards →', 'आप कार्ड दबाकर भी उत्तर दे सकते हैं →')}</p>
+                  <span className="material-symbols-outlined text-[52px] text-stone-500">videocam_off</span>
+                  <p className="text-base font-bold text-stone-300">{t('Camera is off', 'कैमरा बंद है')}</p>
+                  <p className="text-sm text-stone-400">{t('You can still tap the cards →', 'आप कार्ड दबाकर भी उत्तर दे सकते हैं →')}</p>
                 </div>
               )}
 
               {cameraOn && (
                 <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-2">
                   <div className="rounded-xl bg-black/70 px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{t('Your hand', 'आपका हाथ')}</p>
+                    <p className="text-[10px] uppercase tracking-widest text-stone-400 font-bold">{t('Your hand', 'आपका हाथ')}</p>
                     <p className="text-lg font-black leading-tight">
                       {liveShape ? `${HAND_SHAPES[liveShape].emoji} ${shapeLabel(liveShape, lang)}`
                         : handsVisible ? t('Hold a clear shape', 'स्पष्ट संकेत बनाएँ')
@@ -494,8 +494,8 @@ export default function SignBridgeKiosk() {
                     </p>
                   </div>
                   <span className={`rounded-lg px-2 py-1 text-[11px] font-bold ${
-                    visionStatus === 'ready' ? 'bg-emerald-600 text-white'
-                      : visionStatus === 'loading' ? 'bg-orange-500 text-white' : 'bg-red-500 text-white'
+                    visionStatus === 'ready' ? 'bg-emerald-700 text-white'
+                      : visionStatus === 'loading' ? 'bg-amber-500 text-stone-950' : 'bg-red-500 text-white'
                   }`}>
                     {visionStatus === 'ready' ? t('READY', 'तैयार') : visionStatus === 'loading' ? t('LOADING', 'लोड हो रहा') : t('OFFLINE', 'बंद')}
                   </span>
@@ -505,14 +505,14 @@ export default function SignBridgeKiosk() {
 
             {/* Stability meter — the patient watches this fill before it locks in */}
             {(
-              <div className="px-3 py-3 bg-slate-950 border-t-2 border-slate-700">
+              <div className="px-3 py-3 bg-stone-950 border-t-2 border-stone-700">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{t('Hold steady', 'स्थिर रखें')}</span>
-                  <span className={`text-sm font-black ${stability > 0.85 ? 'text-emerald-400' : 'text-orange-400'}`}>{Math.round(stability * 100)}%</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-stone-400">{t('Hold steady', 'स्थिर रखें')}</span>
+                  <span className={`text-sm font-black ${stability > 0.85 ? 'text-emerald-400' : 'text-amber-400'}`}>{Math.round(stability * 100)}%</span>
                 </div>
-                <div className="h-4 w-full rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                <div className="h-4 w-full rounded-full bg-stone-800 overflow-hidden border border-stone-700">
                   <div
-                    className={`h-full rounded-full transition-all duration-150 ${stability > 0.85 ? 'bg-emerald-400' : 'bg-orange-500'}`}
+                    className={`h-full rounded-full transition-all duration-150 ${stability > 0.85 ? 'bg-emerald-500' : 'bg-amber-500'}`}
                     style={{ width: `${Math.round(stability * 100)}%` }}
                   />
                 </div>
@@ -522,7 +522,7 @@ export default function SignBridgeKiosk() {
             <button
               onClick={() => (cameraOn ? stopCamera() : startCamera())}
               className={`w-full px-4 py-4 text-lg font-black flex items-center justify-center gap-2 ${
-                cameraOn ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                cameraOn ? 'bg-stone-800 hover:bg-stone-700 text-stone-200' : 'bg-emerald-700 hover:bg-emerald-600 text-white'
               }`}
             >
               <span className="material-symbols-outlined text-[24px]">{cameraOn ? 'videocam_off' : 'videocam'}</span>
@@ -534,7 +534,7 @@ export default function SignBridgeKiosk() {
             <p className="rounded-xl bg-red-500/20 border-2 border-red-500/50 text-red-100 px-4 py-3 text-base font-semibold">{cameraError}</p>
           )}
           {visionStatus === 'failed' && (
-            <p className="rounded-xl bg-orange-500/20 border-2 border-orange-500/60 text-orange-100 px-4 py-3 text-base font-semibold">
+            <p className="rounded-xl bg-amber-500/20 border-2 border-amber-500/60 text-amber-100 px-4 py-3 text-base font-semibold">
               {t('Gesture model unavailable', 'जेस्चर मॉडल अनुपलब्ध')} ({visionError}). {t('Please tap the cards.', 'कृपया कार्ड दबाएँ।')}
             </p>
           )}
@@ -558,19 +558,19 @@ export default function SignBridgeKiosk() {
                     <button
                       key={c.id}
                       onClick={() => answerAndAdvance(setComplaint, c.id, 'nidra', 1000)}
-                      className={`relative rounded-2xl p-4 text-left border-4 transition-all ${
-                        selected ? 'border-emerald-400 bg-emerald-500/20'
-                          : detecting ? 'border-orange-500 bg-orange-500/15'
-                          : 'border-slate-700 bg-slate-800 hover:border-slate-500'
+                      className={`relative rounded-xl p-4 text-left border-2 transition-colors ${
+                        selected ? 'border-emerald-500 bg-emerald-900/30'
+                          : detecting ? 'border-amber-500 bg-amber-500/10'
+                          : 'border-stone-800 bg-stone-900/90 hover:border-amber-600/50'
                       }`}
                     >
                       {selected && (
-                        <span className="absolute top-2 right-2 w-8 h-8 rounded-full bg-emerald-400 text-slate-900 flex items-center justify-center text-lg font-black">✓</span>
+                        <span className="absolute top-2 right-2 w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center text-lg font-black">✓</span>
                       )}
                       <div className="text-[42px] leading-none mb-2">{c.emoji}</div>
                       <p className="text-xl font-black leading-tight">{c.en}</p>
-                      <p className="text-lg font-bold text-emerald-300 leading-tight">{c.hi}</p>
-                      <p className="mt-2 text-sm text-slate-400 font-semibold flex items-center gap-1">
+                      <p className="font-serif text-lg text-amber-300/90 leading-tight">{c.hi}</p>
+                      <p className="mt-3 w-fit flex items-center gap-1 rounded-md border border-stone-700 bg-stone-950/70 px-2 py-0.5 text-xs text-stone-300 font-semibold">
                         <span className="text-lg">{HAND_SHAPES[c.shape].emoji}</span>
                         {shapeLabel(c.shape, lang)}
                       </p>
@@ -647,7 +647,7 @@ export default function SignBridgeKiosk() {
                 {/* Hands-free fast path — no keyboard, no mouse */}
                 <button
                   onClick={quickGuestToken}
-                  className="w-full px-6 py-6 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
+                  className="w-full px-6 py-6 rounded-2xl bg-amber-600 hover:bg-amber-500 text-stone-950 text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
                 >
                   <span>⚡ त्वरित टोकन / Quick Guest Token (Divyang Jan)</span>
                   <span className="text-base font-bold opacity-80">
@@ -665,7 +665,7 @@ export default function SignBridgeKiosk() {
                   />
                 )}
 
-                <p className="text-center text-base font-bold text-slate-400">
+                <p className="text-center text-base font-bold text-stone-400">
                   {t('— or enter the details below —', '— या नीचे विवरण भरें —')}
                 </p>
 
@@ -677,7 +677,7 @@ export default function SignBridgeKiosk() {
                     value={form.name}
                     onChange={e => { setForm({ ...form, name: e.target.value }); setSubmitError(''); }}
                     placeholder={t('Type your full name', 'अपना पूरा नाम लिखें')}
-                    className="h-16 px-5 rounded-2xl bg-slate-800 border-4 border-slate-700 focus:border-emerald-400 focus:outline-none text-2xl font-bold placeholder:text-slate-500 placeholder:font-medium"
+                    className="h-16 px-5 rounded-2xl bg-stone-800 border-4 border-stone-700 focus:border-emerald-400 focus:outline-none text-2xl font-bold placeholder:text-stone-500 placeholder:font-medium"
                   />
                 </label>
 
@@ -690,7 +690,7 @@ export default function SignBridgeKiosk() {
                         value={form.age}
                         onChange={e => setForm({ ...form, age: e.target.value })}
                         placeholder="--"
-                        className="w-24 h-16 px-3 rounded-2xl bg-slate-800 border-4 border-slate-700 focus:border-emerald-400 focus:outline-none text-2xl font-black text-center placeholder:text-slate-500"
+                        className="w-24 h-16 px-3 rounded-2xl bg-stone-800 border-4 border-stone-700 focus:border-emerald-400 focus:outline-none text-2xl font-black text-center placeholder:text-stone-500"
                       />
                       <input
                         type="range" min="0" max="100" step="1"
@@ -710,7 +710,7 @@ export default function SignBridgeKiosk() {
                           key={g.id}
                           onClick={() => setForm({ ...form, gender: g.id })}
                           className={`flex-1 h-16 rounded-2xl border-4 text-base font-black flex flex-col items-center justify-center leading-tight ${
-                            form.gender === g.id ? 'border-emerald-400 bg-emerald-500/20' : 'border-slate-700 bg-slate-800 hover:border-slate-500'
+                            form.gender === g.id ? 'border-emerald-500 bg-emerald-900/30' : 'border-stone-800 bg-stone-900/90 hover:border-amber-600/50'
                           }`}
                         >
                           <span className="text-xl">{g.emoji}</span>
@@ -723,26 +723,26 @@ export default function SignBridgeKiosk() {
 
                 <label className="flex flex-col gap-2">
                   <span className="text-lg font-black">
-                    {t('Mobile Number', 'मोबाइल नंबर')} <span className="text-slate-400 font-bold text-base">({t('optional', 'वैकल्पिक')})</span>
+                    {t('Mobile Number', 'मोबाइल नंबर')} <span className="text-stone-400 font-bold text-base">({t('optional', 'वैकल्पिक')})</span>
                   </span>
                   <input
                     type="tel"
                     value={form.phone}
                     onChange={e => setForm({ ...form, phone: e.target.value })}
                     placeholder="10-digit number"
-                    className="h-16 px-5 rounded-2xl bg-slate-800 border-4 border-slate-700 focus:border-emerald-400 focus:outline-none text-2xl font-bold placeholder:text-slate-500 placeholder:font-medium"
+                    className="h-16 px-5 rounded-2xl bg-stone-800 border-4 border-stone-700 focus:border-emerald-400 focus:outline-none text-2xl font-bold placeholder:text-stone-500 placeholder:font-medium"
                   />
                 </label>
 
                 {/* Touchless document upload */}
-                <div className="rounded-2xl border-4 border-orange-500/50 bg-orange-500/10 p-4 flex flex-col sm:flex-row items-center gap-4">
+                <div className="rounded-2xl border-4 border-amber-500/50 bg-amber-500/10 p-4 flex flex-col sm:flex-row items-center gap-4">
                   <div className="bg-white p-2 rounded-xl shrink-0">
                     <QRCodeSVG value={mobileUrl} size={116} level="M" />
                   </div>
                   <div className="flex-1 text-center sm:text-left">
                     <p className="text-lg font-black">{t('Have past prescriptions?', 'पुरानी पर्ची है?')}</p>
-                    <p className="text-base font-bold text-orange-200">{t('Scan to attach', 'स्कैन करके जोड़ें')} · पुरानी पर्ची स्कैन करें</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-300">
+                    <p className="text-base font-bold text-amber-200">{t('Scan to attach', 'स्कैन करके जोड़ें')} · पुरानी पर्ची स्कैन करें</p>
+                    <p className="mt-1 text-sm font-semibold text-stone-300">
                       {reports.length
                         ? `✓ ${reports.length} ${t('report(s) attached', 'रिपोर्ट जुड़ी')}`
                         : docs?.status === 'processing'
@@ -753,7 +753,7 @@ export default function SignBridgeKiosk() {
                   <button
                     onClick={goNext}
                     className={`px-5 py-3 rounded-xl text-base font-black shrink-0 ${
-                      reports.length ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-slate-800 hover:bg-slate-700'
+                      reports.length ? 'bg-emerald-700 hover:bg-emerald-600 text-white' : 'bg-stone-800 hover:bg-stone-700'
                     }`}
                   >
                     {reports.length ? t('Continue Consultation', 'परामर्श जारी रखें') : t('Skip', 'आगे बढ़ें')} ➔
@@ -766,7 +766,7 @@ export default function SignBridgeKiosk() {
 
                 <NextButton disabled={!form.name.trim()} onClick={goNext} lang={lang} />
                 {!form.name.trim() && (
-                  <p className="text-center text-base font-bold text-orange-400">{t('Please type your name to continue', 'आगे बढ़ने के लिए अपना नाम लिखें')}</p>
+                  <p className="text-center text-base font-bold text-amber-400">{t('Please type your name to continue', 'आगे बढ़ने के लिए अपना नाम लिखें')}</p>
                 )}
               </div>
             </StagePanel>
@@ -800,7 +800,7 @@ export default function SignBridgeKiosk() {
                 <button
                   onClick={submit}
                   disabled={submitting}
-                  className="w-full px-6 py-7 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-2xl sm:text-3xl font-black flex items-center justify-center gap-3 shadow-xl"
+                  className="w-full px-6 py-7 rounded-2xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-60 text-white text-2xl sm:text-3xl font-black flex items-center justify-center gap-3 shadow-xl"
                 >
                   {submitting ? (
                     <>
@@ -825,13 +825,13 @@ export default function SignBridgeKiosk() {
       {drawerOpen && (
         <div className="fixed inset-0 z-[200] flex justify-end" onClick={() => setDrawerOpen(false)}>
           <div className="absolute inset-0 bg-black/70" />
-          <aside onClick={e => e.stopPropagation()} className="relative w-full max-w-md h-full bg-slate-900 border-l-4 border-slate-700 overflow-y-auto flex flex-col gap-5 p-5">
+          <aside onClick={e => e.stopPropagation()} className="relative w-full max-w-md h-full bg-stone-900 border-l-4 border-stone-700 overflow-y-auto flex flex-col gap-5 p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-black">{t('Upload Reports', 'रिपोर्ट अपलोड')}</h2>
                 <p className="text-base font-bold text-emerald-300">पुरानी पर्ची स्कैन करें</p>
               </div>
-              <button onClick={() => setDrawerOpen(false)} className="w-11 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center shrink-0">
+              <button onClick={() => setDrawerOpen(false)} className="w-11 h-11 rounded-xl bg-stone-800 hover:bg-stone-700 flex items-center justify-center shrink-0">
                 <span className="material-symbols-outlined text-[24px]">close</span>
               </button>
             </div>
@@ -840,11 +840,11 @@ export default function SignBridgeKiosk() {
               <div className="p-3 bg-white rounded-2xl">
                 <QRCodeSVG value={mobileUrl} size={196} level="M" />
               </div>
-              <p className="text-center text-base font-bold text-slate-300">
+              <p className="text-center text-base font-bold text-stone-300">
                 {t('Scan with your phone camera to send prescriptions and lab reports.',
                    'फ़ोन कैमरे से स्कैन कर पर्ची व लैब रिपोर्ट भेजें।')}
               </p>
-              <span className="px-3 py-1.5 rounded-lg bg-slate-800 text-sm font-bold text-slate-300">
+              <span className="px-3 py-1.5 rounded-lg bg-stone-800 text-sm font-bold text-stone-300">
                 {docs?.status === 'processing' ? t('Reading document…', 'दस्तावेज़ पढ़ा जा रहा है…') : `${t('Waiting', 'प्रतीक्षा')} · ${sessionId}`}
               </span>
             </div>
@@ -857,7 +857,7 @@ export default function SignBridgeKiosk() {
                     ✓ {reports.length} {t(`Document${reports.length === 1 ? '' : 's'} Attached`, 'दस्तावेज़ जुड़े')}:
                   </span>
                   {reports.map((r, i) => (
-                    <span key={r.id || i} className="px-2.5 py-1 rounded-lg bg-slate-900 text-emerald-300 text-sm font-black">
+                    <span key={r.id || i} className="px-2.5 py-1 rounded-lg bg-stone-900 text-emerald-300 text-sm font-black">
                       {DOC_BADGE[r.documentType] || DOC_BADGE.MIXED}
                     </span>
                   ))}
@@ -865,7 +865,7 @@ export default function SignBridgeKiosk() {
 
                 <button
                   onClick={() => { setDrawerOpen(false); goNext(); }}
-                  className="w-full px-6 py-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
+                  className="w-full px-6 py-6 rounded-2xl bg-emerald-700 hover:bg-emerald-600 text-white text-xl sm:text-2xl font-black flex flex-col items-center justify-center gap-1 shadow-xl"
                 >
                   <span>➔ {t('Next: Continue Consultation', 'परामर्श जारी रखें')}</span>
                   <span className="text-base font-bold opacity-80">
@@ -877,12 +877,12 @@ export default function SignBridgeKiosk() {
 
             {reports.length > 0 && (
               <div className="flex flex-col gap-2">
-                <p className="text-sm font-black uppercase tracking-wider text-slate-400">{t('Attached', 'जुड़ी हुई')}</p>
+                <p className="text-sm font-black uppercase tracking-wider text-stone-400">{t('Attached', 'जुड़ी हुई')}</p>
                 {reports.map((r, i) => (
-                  <div key={r.id || i} className="rounded-xl bg-slate-800 border-2 border-slate-700 p-3">
-                    <p className="text-sm font-black text-orange-400">{DOC_BADGE[r.documentType] || DOC_BADGE.MIXED}</p>
+                  <div key={r.id || i} className="rounded-xl bg-stone-800 border-2 border-stone-700 p-3">
+                    <p className="text-sm font-black text-amber-400">{DOC_BADGE[r.documentType] || DOC_BADGE.MIXED}</p>
                     <p className="text-base font-bold truncate">{r.title || r.fileName}</p>
-                    <p className="text-sm font-semibold text-slate-400">
+                    <p className="text-sm font-semibold text-stone-400">
                       💊 {r.medicines?.length || 0} · 🧪 {r.labTests?.length || 0}
                     </p>
                   </div>
@@ -890,7 +890,7 @@ export default function SignBridgeKiosk() {
               </div>
             )}
 
-            <button onClick={() => setDrawerOpen(false)} className="mt-auto w-full px-5 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-black">
+            <button onClick={() => setDrawerOpen(false)} className="mt-auto w-full px-5 py-4 rounded-2xl bg-emerald-700 hover:bg-emerald-600 text-white text-xl font-black">
               {t('Done', 'हो गया')}
             </button>
           </aside>
@@ -906,7 +906,7 @@ function StagePanel({ icon, en, hi, help, children, onBack, backLabel }) {
   return (
     <div className="flex flex-col gap-4">
       {/* High-contrast question banner */}
-      <div className="rounded-2xl bg-emerald-600 text-white px-5 py-5 flex items-start gap-4">
+      <div className="rounded-xl bg-emerald-800 border border-emerald-600/40 text-white px-5 py-5 flex items-start gap-4">
         <span className="text-[44px] leading-none shrink-0">{icon}</span>
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-black leading-tight">{en}</h1>
@@ -915,9 +915,9 @@ function StagePanel({ icon, en, hi, help, children, onBack, backLabel }) {
       </div>
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-base font-bold text-slate-300">{help}</p>
+        <p className="text-base font-bold text-stone-300">{help}</p>
         {onBack && (
-          <button onClick={onBack} className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-base font-black flex items-center gap-1.5 shrink-0">
+          <button onClick={onBack} className="px-4 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-base font-black flex items-center gap-1.5 shrink-0">
             <span className="material-symbols-outlined text-[20px]">arrow_back</span>{backLabel}
           </button>
         )}
@@ -938,20 +938,20 @@ function BinaryChoice({ options, value, liveShape, lang, onPick }) {
           <button
             key={o.id}
             onClick={() => onPick(o.id)}
-            className={`relative rounded-2xl p-6 border-4 text-left transition-all ${
+            className={`relative rounded-xl p-6 border-2 text-left transition-colors ${
               selected
-                ? 'border-emerald-400 bg-emerald-500/25'
-                : detecting ? 'border-orange-400 bg-orange-400/10'
-                : 'border-slate-700 bg-slate-800 hover:border-slate-500'
+                ? 'border-emerald-500 bg-emerald-900/30'
+                : detecting ? 'border-amber-500 bg-amber-500/10'
+                : 'border-stone-800 bg-stone-900/90 hover:border-amber-600/50'
             }`}
           >
             {selected && (
-              <span className="absolute top-3 right-3 w-10 h-10 rounded-full bg-emerald-400 text-slate-900 flex items-center justify-center text-2xl font-black">✓</span>
+              <span className="absolute top-3 right-3 w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center text-2xl font-black">✓</span>
             )}
             <div className="text-[64px] leading-none mb-2">{o.emoji}</div>
             <p className="text-2xl font-black leading-tight">{o.en}</p>
-            <p className="text-xl font-black text-emerald-300 leading-tight mt-1">{o.hi}</p>
-            <p className="mt-3 text-sm font-bold text-slate-400">
+            <p className="font-serif text-xl text-amber-300/90 leading-tight mt-1">{o.hi}</p>
+            <p className="mt-3 w-fit rounded-md border border-stone-700 bg-stone-950/70 px-2 py-0.5 text-xs font-semibold text-stone-300">
               {o.shapes.map(s => `${HAND_SHAPES[s].emoji} ${shapeLabel(s, lang)}`).join('  ·  ')}
             </p>
           </button>
@@ -966,7 +966,7 @@ function SelectedBanner({ emoji, name, advanceMs, lang }) {
   const advancing = advanceMs > 0;
   const seconds = (advanceMs / 1000).toFixed(1);
   return (
-    <div className={`rounded-2xl bg-emerald-500/25 border-4 border-emerald-400 px-5 py-4 flex flex-col gap-3 ${advancing ? 'animate-pulse' : ''}`}>
+    <div className={`rounded-xl bg-emerald-950/40 border border-emerald-600/50 px-5 py-4 flex flex-col gap-3 transition-colors ${advancing ? 'border-emerald-500' : ''}`}>
       <div className="flex items-center gap-4">
         <span className="text-[40px] leading-none shrink-0">{emoji}</span>
         <div className="min-w-0">
@@ -981,8 +981,8 @@ function SelectedBanner({ emoji, name, advanceMs, lang }) {
         </div>
       </div>
       {advancing && (
-        <div className="h-3 w-full rounded-full bg-emerald-900/50 overflow-hidden">
-          <div className="h-full bg-emerald-400 transition-all duration-100" style={{ width: `${Math.min(100, (advanceMs / 1500) * 100)}%` }} />
+        <div className="h-1.5 w-full rounded-full bg-stone-800 overflow-hidden">
+          <div className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-[width] duration-100 ease-linear" style={{ width: `${Math.min(100, (advanceMs / 1500) * 100)}%` }} />
         </div>
       )}
     </div>
@@ -995,7 +995,7 @@ function NextButton({ disabled, onClick, lang }) {
       onClick={onClick}
       disabled={disabled}
       className={`w-full px-6 py-6 rounded-2xl text-2xl sm:text-3xl font-black flex items-center justify-center gap-3 transition-all ${
-        disabled ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl'
+        disabled ? 'bg-stone-800 text-stone-500 cursor-not-allowed' : 'bg-emerald-700 hover:bg-emerald-600 text-white shadow-xl'
       }`}
     >
       {lang === 'hi' ? 'आगे बढ़ें' : 'Next'} ➔
@@ -1007,14 +1007,14 @@ function SummaryRow({ icon, label, value, tone, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-2xl bg-slate-800 border-4 border-slate-700 hover:border-slate-500 px-5 py-4 flex items-center gap-4 text-left"
+      className="w-full rounded-2xl bg-stone-800 border-4 border-stone-700 hover:border-stone-500 px-5 py-4 flex items-center gap-4 text-left"
     >
       <span className="text-[36px] leading-none shrink-0">{icon}</span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-black uppercase tracking-wider text-slate-400">{label}</p>
-        <p className={`text-xl font-black leading-tight truncate ${tone === 'bad' ? 'text-orange-400' : 'text-slate-100'}`}>{value}</p>
+        <p className="text-sm font-black uppercase tracking-wider text-stone-400">{label}</p>
+        <p className={`text-xl font-black leading-tight truncate ${tone === 'bad' ? 'text-amber-400' : 'text-stone-100'}`}>{value}</p>
       </div>
-      <span className="material-symbols-outlined text-[24px] text-slate-400 shrink-0">edit</span>
+      <span className="material-symbols-outlined text-[24px] text-stone-400 shrink-0">edit</span>
     </button>
   );
 }
@@ -1025,8 +1025,8 @@ function SuccessScreen({ result, t, countdown, complaintObj, sleepObj, agniObj, 
   const token = result.id ? `AYUSH-${String(result.id).slice(-6).toUpperCase()}` : 'AYUSH-000000';
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center px-4 py-8 gap-6">
-      <div className="w-24 h-24 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[52px] font-black">✓</div>
+    <div className="min-h-screen bg-[#0f0d0b] text-stone-100 flex flex-col items-center px-4 py-8 gap-6">
+      <div className="w-24 h-24 rounded-full bg-emerald-700 ring-4 ring-emerald-600/30 text-white flex items-center justify-center text-[52px] font-black">✓</div>
 
       <div className="text-center">
         <h1 className="text-3xl sm:text-4xl font-black">{t('Sent to the Doctor', 'डॉक्टर को भेज दिया गया')}</h1>
@@ -1034,9 +1034,9 @@ function SuccessScreen({ result, t, countdown, complaintObj, sleepObj, agniObj, 
       </div>
 
       {/* Token */}
-      <div className="w-full max-w-lg rounded-3xl bg-slate-900 border-4 border-orange-500 p-6 flex flex-col items-center gap-2">
-        <p className="text-base font-black uppercase tracking-widest text-slate-400">{t('Your OPD Token', 'आपका ओपीडी टोकन')}</p>
-        <p className="text-4xl sm:text-5xl font-black text-orange-400 tracking-wide">{token}</p>
+      <div className="w-full max-w-lg rounded-xl bg-stone-900/90 border-2 border-amber-600/60 p-6 flex flex-col items-center gap-2">
+        <p className="text-base font-black uppercase tracking-widest text-stone-400">{t('Your OPD Token', 'आपका ओपीडी टोकन')}</p>
+        <p className="text-4xl sm:text-5xl font-black text-amber-400 tracking-wide">{token}</p>
         <p className="text-xl font-bold">{result.name}</p>
       </div>
 
@@ -1045,11 +1045,11 @@ function SuccessScreen({ result, t, countdown, complaintObj, sleepObj, agniObj, 
         <span className={`px-6 py-3 rounded-2xl text-2xl font-black ${cfg.ring}`}>
           {result.triageLevel} — {result.triageLabel || cfg.label}
         </span>
-        <p className="text-lg font-bold text-slate-300 text-center">{t(cfg.note.en, cfg.note.hi)}</p>
+        <p className="text-lg font-bold text-stone-300 text-center">{t(cfg.note.en, cfg.note.hi)}</p>
       </div>
 
       {/* What was recorded */}
-      <div className="w-full max-w-lg rounded-2xl bg-slate-800 border-2 border-slate-700 p-5 flex flex-col gap-2.5">
+      <div className="w-full max-w-lg rounded-2xl bg-stone-800 border-2 border-stone-700 p-5 flex flex-col gap-2.5">
         <Line icon={complaintObj?.emoji || '🩺'} label={t('Complaint', 'शिकायत')} value={complaintObj ? `${complaintObj.en} / ${complaintObj.hi}` : (result.chiefComplaint || '—')} />
         <Line icon={sleepObj?.emoji || '😴'} label={t('Sleep (Nidra)', 'नींद (निद्रा)')} value={sleepObj ? t(sleepObj.en, sleepObj.hi) : '—'} />
         <Line icon={agniObj?.emoji || '🍽️'} label={t('Digestion (Agni)', 'पाचन (अग्नि)')} value={agniObj ? t(agniObj.en, agniObj.hi) : '—'} />
@@ -1059,17 +1059,17 @@ function SuccessScreen({ result, t, countdown, complaintObj, sleepObj, agniObj, 
 
       {/* Countdown */}
       <div className="w-full max-w-lg flex flex-col gap-3">
-        <div className="h-3 w-full rounded-full bg-slate-800 overflow-hidden border border-slate-700">
-          <div className="h-full bg-emerald-400 transition-all duration-1000" style={{ width: `${(countdown / RETURN_HOME_SECONDS) * 100}%` }} />
+        <div className="h-3 w-full rounded-full bg-stone-800 overflow-hidden border border-stone-700">
+          <div className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-[width] duration-100 ease-linear0" style={{ width: `${(countdown / RETURN_HOME_SECONDS) * 100}%` }} />
         </div>
-        <p className="text-center text-lg font-bold text-slate-300">
+        <p className="text-center text-lg font-bold text-stone-300">
           {t(`Returning to the home screen in ${countdown}s`, `${countdown} सेकंड में होम स्क्रीन पर वापस`)}
         </p>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button onClick={onHome} className="flex-1 px-6 py-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-black">
+          <button onClick={onHome} className="flex-1 px-6 py-5 rounded-2xl bg-emerald-700 hover:bg-emerald-600 text-white text-xl font-black">
             🏠 {t('Home Now', 'अभी होम जाएँ')}
           </button>
-          <button onClick={onRestart} className="flex-1 px-6 py-5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-xl font-black">
+          <button onClick={onRestart} className="flex-1 px-6 py-5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-xl font-black">
             ➕ {t('New Patient', 'नया रोगी')}
           </button>
         </div>
@@ -1083,7 +1083,7 @@ function Line({ icon, label, value }) {
     <div className="flex items-start gap-3">
       <span className="text-[26px] leading-none shrink-0">{icon}</span>
       <div className="min-w-0">
-        <p className="text-xs font-black uppercase tracking-wider text-slate-400">{label}</p>
+        <p className="text-xs font-black uppercase tracking-wider text-stone-400">{label}</p>
         <p className="text-lg font-bold leading-tight">{value}</p>
       </div>
     </div>

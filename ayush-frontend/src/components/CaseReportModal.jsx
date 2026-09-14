@@ -18,9 +18,9 @@ export default function CaseReportModal({ isOpen, onClose, patient }) {
   const triageColor = {
     P1: 'bg-error text-on-error',
     P2: 'bg-secondary text-on-secondary',
-    P3: 'bg-primary text-on-primary',
+    P3: 'bg-emerald-700 text-white',
     P4: 'bg-tertiary text-on-tertiary',
-  }[patient?.triageLevel] || 'bg-primary text-on-primary';
+  }[patient?.triageLevel] || 'bg-emerald-700 text-white';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 md:p-8 bg-inverse-surface/60 backdrop-blur-md overflow-y-auto">
@@ -29,7 +29,7 @@ export default function CaseReportModal({ isOpen, onClose, patient }) {
         {/* Modal Header */}
         <div className="bg-surface-container-low px-6 py-4 flex items-center justify-between gap-4 sticky top-0 z-20">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
+            <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-sm">
               <span className="material-symbols-outlined text-[20px]">description</span>
             </div>
             <div>

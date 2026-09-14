@@ -407,7 +407,7 @@ export default function PatientIntake() {
             </div>
 
             <div className="px-6 pb-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <button onClick={() => setShowVideo(true)} className="flex-1 flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg shadow-md hover:bg-primary-container transition-all">
+              <button onClick={() => setShowVideo(true)} className="flex-1 flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-emerald-700 text-white font-label-lg text-label-lg shadow-md hover:bg-emerald-600 transition-all">
                 <span className="material-symbols-outlined text-[22px]">videocam</span>
                 Start Video Consult
               </button>
@@ -450,7 +450,7 @@ export default function PatientIntake() {
         {/* Language selection banner */}
         <div className="w-full bg-surface-container-lowest rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-sm">
               <span className="material-symbols-outlined text-[22px]">translate</span>
             </div>
             <div>
@@ -459,8 +459,8 @@ export default function PatientIntake() {
             </div>
           </div>
           <div className="inline-flex items-center bg-surface-container rounded-full p-1 gap-1">
-            <button onClick={() => changeLang('hi')} className={`px-4 py-2 rounded-full font-label-md text-label-md transition-all ${lang === 'hi' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>🇮🇳 हिंदी (Hindi)</button>
-            <button onClick={() => changeLang('en')} className={`px-4 py-2 rounded-full font-label-md text-label-md transition-all ${lang === 'en' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>🇬🇧 English</button>
+            <button onClick={() => changeLang('hi')} className={`px-4 py-2 rounded-full font-label-md text-label-md transition-all ${lang === 'hi' ? 'bg-emerald-700 text-white shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>🇮🇳 हिंदी (Hindi)</button>
+            <button onClick={() => changeLang('en')} className={`px-4 py-2 rounded-full font-label-md text-label-md transition-all ${lang === 'en' ? 'bg-emerald-700 text-white shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>🇬🇧 English</button>
           </div>
         </div>
 
@@ -475,7 +475,7 @@ export default function PatientIntake() {
                   <div className="flex items-center w-full">
                     <div className={`h-1 flex-1 rounded-full ${i === 0 ? 'opacity-0' : done || active ? 'bg-primary' : 'bg-surface-container-high'}`} />
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mx-1 transition-all ${
-                      done ? 'bg-primary text-on-primary' : active ? 'bg-primary/15 text-primary ring-2 ring-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                      done ? 'bg-emerald-700 text-white' : active ? 'bg-primary/15 text-primary ring-2 ring-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>
                       {done ? <span className="material-symbols-outlined text-[16px]">check</span>
                             : <span className="material-symbols-outlined text-[16px]">{STEP_META[s].icon}</span>}
                     </div>
@@ -498,7 +498,7 @@ export default function PatientIntake() {
             <div className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden ring-1 ring-surface-container-high">
               <button onClick={() => setQrOpen(o => !o)} className="w-full px-5 py-4 flex items-center justify-between gap-3 hover:bg-surface-container-low transition-colors">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-sm">
                     <span className="material-symbols-outlined text-[22px]">qr_code_2</span>
                   </div>
                   <div className="text-left">
@@ -582,7 +582,7 @@ export default function PatientIntake() {
               <div className="bg-surface-container-low p-4 sm:px-5 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-sm">
                       <span className="material-symbols-outlined text-[22px]">psychiatry</span>
                     </div>
                     <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-tertiary-container shadow-sm" />
@@ -673,7 +673,7 @@ export default function PatientIntake() {
                       placeholder={lang === 'hi' ? 'यहाँ लिखें या माइक दबाएं…' : 'Type your answer or tap mic…'}
                       value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={handleKeyDown} type="text"
                     />
-                    <button className="absolute right-2 w-8 h-8 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-sm hover:bg-primary-container transition-colors" onClick={handleSend} type="button">
+                    <button className="absolute right-2 w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center shadow-sm hover:bg-emerald-600 transition-colors" onClick={handleSend} type="button">
                       <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
                     </button>
                   </div>

@@ -1,57 +1,64 @@
 import { AYUSH_PILLARS } from '../utils/ayushPillars';
 
 /**
- * Editable 3-pillar AYUSH Clinical Assessment (Dosha, Agni, Koshtha).
+ * Editable 3-pillar AYUSH Rogi Pariksha (Dosha, Agni, Koshtha).
  * Pre-filled with the AI triage read; any pillar the physician changes is flagged.
  */
-export default function AyushAssessmentCard({ idPrefix, value, aiValue, onChange }) {
-  const editedCount = AYUSH_PILLARS.filter(({ key }) => value[key] && value[key] !== aiValue[key]).length;
-
+export default function AyushAssessmentCard({ idPrefix, value, aiValue, onChange, correlation }) {
   return (
-    <div className="rounded-2xl bg-slate-900 border-2 border-orange-500 p-3.5 flex flex-col gap-3 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-label-lg text-label-lg text-orange-400 font-semibold flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-[18px]">spa</span>
-          AYUSH Clinical Assessment / आयुष नैदानिक मूल्यांकन
+    <section className="h-full rounded-xl bg-stone-900/90 border border-amber-600/40 p-3.5 flex flex-col gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[15px]">spa</span>
+          3-Pillar AYUSH Rogi Pariksha
+        </h3>
+        <span className="px-1.5 py-px rounded border border-amber-600/40 bg-amber-500/10 text-[10px] font-semibold text-amber-400">
+          Editable by Doctor
         </span>
-        <span className={`px-2 py-0.5 rounded-full font-label-sm text-label-sm ${editedCount ? 'bg-orange-500 text-white' : 'bg-emerald-600 text-white'}`}>
-          {editedCount ? `${editedCount} verified by doctor` : 'AI triage values'}
-        </span>
-      </div>
+      </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+      <div className="flex flex-col gap-2.5">
         {AYUSH_PILLARS.map(({ key, label, hi, icon, options }) => {
           const edited = value[key] && value[key] !== aiValue[key];
           const id = `ayush-${idPrefix}-${key}`;
           return (
-            <div key={key} className="flex flex-col gap-1 min-w-0">
-              <label htmlFor={id} className="font-label-sm text-label-sm text-slate-300 uppercase tracking-wide flex items-center gap-1">
-                <span className="material-symbols-outlined text-emerald-400 text-[14px]">{icon}</span>
-                {label} <span className="normal-case text-slate-400">· {hi}</span>
-              </label>
+            <div key={key} className={`rounded-lg border p-2.5 transition-colors ${edited ? 'border-amber-500/70 bg-amber-500/5' : 'border-stone-800 bg-stone-950/60'}`}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <label htmlFor={id} className="text-xs font-medium text-stone-300 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-emerald-500 text-[15px]">{icon}</span>
+                  {label} <span className="font-serif text-stone-500">· {hi}</span>
+                </label>
+                {edited ? (
+                  <span className="text-[10px] font-semibold text-amber-400 whitespace-nowrap" title={`AI triage: ${aiValue[key] || 'not assessed'}`}>
+                    ✎ Edited by Doctor / चिकित्सक द्वारा संशोधित
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-stone-500 whitespace-nowrap">AI triage value</span>
+                )}
+              </div>
               <select
                 id={id}
                 value={value[key] || ''}
                 onChange={(e) => onChange({ ...value, [key]: e.target.value })}
-                className={`w-full rounded-xl bg-slate-800 text-white px-2.5 py-2 font-body-sm text-body-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 border ${edited ? 'border-orange-500' : 'border-slate-700'}`}
+                className="w-full rounded-md bg-stone-950 border border-stone-700 text-stone-100 font-serif text-sm px-2.5 py-1.5 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
               >
                 {!value[key] && <option value="">Select…</option>}
                 {options.map(o => <option key={o} value={o}>{o}</option>)}
               </select>
-              {edited ? (
-                <span className="font-label-sm text-label-sm text-orange-400 normal-case" title={`AI triage: ${aiValue[key] || 'not assessed'}`}>
-                  ✎ Edited by Doctor / चिकित्सक द्वारा संशोधित
-                </span>
-              ) : (
-                <span className="font-label-sm text-label-sm text-slate-500 normal-case">AI triage value</span>
-              )}
             </div>
           );
         })}
       </div>
-      <p className="font-label-sm text-label-sm text-slate-400 normal-case">
-        Saved with <strong className="text-emerald-400">💾 Save &amp; Finalize Prescription</strong> below.
-      </p>
-    </div>
+
+      {correlation && (
+        <div className="rounded-lg border border-emerald-600/30 bg-emerald-950/30 p-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1 mb-1">
+            <span className="material-symbols-outlined text-[14px]">neurology</span>
+            AI Vaidya Clinical Correlation
+          </p>
+          <p className="text-xs leading-relaxed text-stone-300">{correlation}</p>
+        </div>
+      )}
+    </section>
   );
 }

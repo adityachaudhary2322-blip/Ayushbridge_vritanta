@@ -4,11 +4,15 @@
 
 @layer base {
   html, body { margin: 0; padding: 0; }
-  body { overscroll-behavior: none; }
+  html { color-scheme: dark; }
+  body { overscroll-behavior: none; background-color: #0f0d0b; }
   ::-webkit-scrollbar { display: none; }
+  /* Native selects/options inherit the dark canvas instead of flashing white. */
+  select option { background-color: #1c1917; color: #f5f5f4; }
 }
 
-/* Pastel utility classes for AYUSH triage UI */
-.bg-cream { background-color: #FAF9F6; }
-.bg-mint  { background-color: #EAF2EC; }
-.bg-blush { background-color: #FFE8E8; }
+/* Parchment question card — warm, lightly lit panel for spoken prompts. */
+.parchment-card {
+  background: linear-gradient(180deg, rgba(120, 83, 34, 0.14), rgba(28, 25, 23, 0.9));
+  border: 1px solid rgba(217, 119, 6, 0.35);
+}
