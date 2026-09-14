@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
+import { BrandMark, OfficialBadge, OfficialStrip, ThemeToggle } from './Brand';
+import { BRAND } from '../utils/brand';
 
 function PathwayCard({ index, icon, title, hi, body, children, cta, ctaIcon, onClick, tone = 'sage' }) {
   const ctaTone = tone === 'brass'
     ? 'bg-amber-600 hover:bg-amber-500 text-stone-950'
     : 'bg-emerald-700 hover:bg-emerald-600 text-white';
   return (
-    <article className="group relative flex flex-col rounded-xl border border-stone-800 bg-stone-900/90 hover:border-amber-600/50 transition-colors overflow-hidden">
+    <article className="card-surface group relative flex flex-col rounded-xl border border-stone-800 bg-stone-900/90 hover:border-amber-600/50 transition-colors overflow-hidden">
       <div className="h-px bg-gradient-to-r from-transparent via-amber-600/60 to-transparent" />
       <div className="p-6 flex-1 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
@@ -37,21 +39,15 @@ export default function LandingPortal() {
   const teleconsultUrl = `${window.location.origin}/teleconsult?room=${roomId}`;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0f0d0b] text-stone-100">
+    <div className="min-h-screen flex flex-col bg-stone-950 text-stone-100">
       {/* Institutional nav */}
-      <header className="sticky top-0 z-20 border-b border-stone-800 bg-stone-950/85 backdrop-blur-md">
-        <div className="h-0.5 bg-gradient-to-r from-amber-600/80 via-amber-500/40 to-emerald-700/80" />
+      <header className="sticky top-0 z-20 bg-stone-950/85 backdrop-blur-md">
+        <OfficialStrip />
+        <div className="border-b border-stone-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="w-9 h-9 shrink-0 rounded-full border border-amber-600/50 bg-amber-500/10 text-amber-500 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[20px]">spa</span>
-            </span>
-            <div className="leading-tight min-w-0">
-              <p className="text-sm font-semibold text-stone-100 truncate">AyushBridge MediKiosk</p>
-              <p className="font-serif text-[12px] text-stone-400 truncate">आयुष स्वास्थ्य सहायक · Ministry of AYUSH</p>
-            </div>
-          </div>
+          <BrandMark context="Clinical HealthOS · Ministry of AYUSH" />
           <nav className="flex items-center gap-2">
+            <ThemeToggle />
             <button onClick={() => navigate('/text-intake')} className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-stone-700 text-stone-300 hover:text-stone-100 hover:border-stone-600 text-sm font-medium transition-colors">
               <span className="material-symbols-outlined text-[18px]">keyboard</span>Text Intake
             </button>
@@ -61,19 +57,23 @@ export default function LandingPortal() {
             </button>
           </nav>
         </div>
+        </div>
       </header>
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16 flex flex-col gap-14">
         {/* Hero */}
         <section className="flex flex-col items-center text-center gap-5">
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-amber-600/40 bg-amber-500/10 text-amber-400 text-xs font-semibold tracking-wide">
-            <span className="material-symbols-outlined text-[15px]">verified</span>
-            GOVERNMENT OF INDIA · MINISTRY OF AYUSH · OPD DIGITAL INTAKE
-          </span>
-          <h1 className="max-w-4xl text-3xl sm:text-5xl font-semibold leading-tight tracking-tight">
-            <span className="font-serif text-amber-500">AyushBridge MediKiosk</span>
-            <span className="block mt-2 text-stone-100 text-2xl sm:text-4xl">AI-Powered Multimodal Intake &amp; Triaging System</span>
+          <OfficialBadge />
+          <h1 className="flex flex-col items-center gap-1">
+            <span className="text-5xl sm:text-7xl font-bold tracking-[0.18em] text-stone-100">{BRAND.name}</span>
+            <span className="font-serif text-3xl sm:text-4xl text-amber-500">{BRAND.devanagari}</span>
+            <span className="mt-3 max-w-3xl text-lg sm:text-2xl font-semibold leading-snug text-stone-200">{BRAND.subtitle}</span>
           </h1>
+          <p className="flex flex-col sm:flex-row items-center gap-x-3 gap-y-1 text-base">
+            <span className="font-serif text-xl text-emerald-400">{BRAND.taglineHi}</span>
+            <span className="hidden sm:inline text-stone-600" aria-hidden="true">/</span>
+            <span className="text-stone-300">{BRAND.taglineEn}</span>
+          </p>
           <p className="max-w-2xl text-base leading-relaxed text-stone-400">
             Voice, telephony and sign-language intake in 11 Indian languages. Every patient is triaged P1–P4,
             assessed on the three Ayurvedic pillars — <span className="font-serif text-stone-200">Dosha, Agni, Koshtha</span> — and
@@ -150,7 +150,7 @@ export default function LandingPortal() {
             <span aria-hidden="true">•</span>
             <span>Ministry of AYUSH Aligned</span>
           </p>
-          <p className="text-stone-600">AyushBridge MediKiosk · Prototype</p>
+          <p className="text-stone-600">{BRAND.name} · <span className="font-serif">{BRAND.devanagari}</span> Clinical HealthOS · Prototype</p>
         </div>
       </footer>
     </div>

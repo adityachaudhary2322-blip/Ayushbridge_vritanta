@@ -10,6 +10,7 @@ import AyushAssessmentCard from './AyushAssessmentCard';
 import { assessmentOf, aiAssessmentOf } from '../utils/ayushPillars';
 import { normalizeClinicalDocs, flagStyle, docTypeLabel, docTime } from '../utils/clinicalDocs';
 import { patientToken } from '../utils/consultation';
+import { BrandMark, OfficialStrip, ThemeToggle } from './Brand';
 
 const API = '/api';
 
@@ -74,7 +75,7 @@ function MetricPill({ icon, label, value, tone = 'stone', pulse = false }) {
 
 function ModuleCard({ title, icon, children, action }) {
   return (
-    <section className="h-full rounded-xl bg-stone-900/90 border border-stone-800 p-3.5 flex flex-col gap-3 min-w-0">
+    <section className="h-full card-surface rounded-xl bg-stone-900/90 border border-stone-800 p-3.5 flex flex-col gap-3 min-w-0">
       <header className="flex items-center justify-between gap-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[15px]">{icon}</span>{title}
@@ -232,16 +233,16 @@ export default function DoctorDashboard() {
   const today = new Date(now);
 
   return (
-    <div className="min-h-screen bg-[#0f0d0b] text-stone-100 flex flex-col">
+    <div className="min-h-screen lg:h-screen bg-stone-950 text-stone-100 flex flex-col">
       {/* ── A. Institutional top bar ─────────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 border-b border-stone-800 bg-stone-950/85 backdrop-blur-md">
-        <div className="h-0.5 bg-gradient-to-r from-amber-600/80 via-amber-500/40 to-emerald-700/80" />
-        <div className="px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2.5">
+      <header className="sticky lg:static top-0 z-30 shrink-0 bg-stone-950/85 backdrop-blur-md">
+        <OfficialStrip />
+        <div className="border-b border-stone-800 px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2.5">
           <div className="flex items-center gap-3 min-w-0">
-            <button onClick={() => navigate('/')} title="Portal home"
-              className="w-10 h-10 shrink-0 rounded-full border border-amber-600/50 bg-amber-500/10 text-amber-500 flex items-center justify-center hover:bg-amber-500/20 transition-colors">
-              <span className="material-symbols-outlined text-[22px]">account_balance</span>
+            <button onClick={() => navigate('/')} title="Portal home" className="shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500">
+              <BrandMark compact />
             </button>
+            <span className="hidden sm:block w-px h-8 bg-stone-800" aria-hidden="true" />
             <div className="leading-tight min-w-0">
               <p className="font-serif text-[15px] text-stone-100 truncate">राष्ट्रीय आयुर्वेद संस्थान <span className="text-stone-500">/</span> National AYUSH OPD Portal</p>
               <p className="text-[11px] text-stone-400">Station ID: <span className="text-amber-500 font-semibold">OPD-Room 4B</span></p>
@@ -262,7 +263,8 @@ export default function DoctorDashboard() {
                 {today.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} · {today.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
-            <span className="w-8 h-8 rounded-full bg-emerald-800 border border-emerald-600/40 text-emerald-200 text-xs font-bold flex items-center justify-center" title="Dr. Ananya Sharma — Reg. AY-DL-88421">AS</span>
+            <span className="w-8 h-8 rounded-full bg-emerald-700 text-white text-xs font-bold flex items-center justify-center" title="Dr. Ananya Sharma — Reg. AY-DL-88421">AS</span>
+            <ThemeToggle />
             <button onClick={refresh} title="Refresh queue"
               className="w-9 h-9 rounded-md border border-stone-700 text-stone-300 hover:text-amber-400 hover:border-amber-600/50 flex items-center justify-center transition-colors">
               <span className={`material-symbols-outlined text-[20px] ${refreshing ? 'animate-spin' : ''}`}>refresh</span>
@@ -272,7 +274,7 @@ export default function DoctorDashboard() {
       </header>
 
       {/* ── B. Split workstation ─────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col lg:flex-row lg:h-[calc(100vh-66px)] min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         {/* B1. Queue column */}
         <aside className="lg:w-96 shrink-0 border-b lg:border-b-0 lg:border-r border-stone-800 bg-stone-950/60 flex flex-col max-h-[46vh] lg:max-h-none min-h-0">
           <div className="sticky top-0 z-10 p-3 border-b border-stone-800 bg-stone-950/90 backdrop-blur-md flex flex-col gap-2">
@@ -433,7 +435,7 @@ function Workstation({
   return (
     <div className="p-4 lg:p-5 flex flex-col gap-4 max-w-[1500px]">
       {/* Demographics banner */}
-      <section className="rounded-xl bg-stone-900/90 border border-stone-800 overflow-hidden">
+      <section className="card-surface rounded-xl bg-stone-900/90 border border-stone-800 overflow-hidden">
         <div className="p-4 flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -549,7 +551,7 @@ function Workstation({
           {clinical.labTests.length > 0 && (
             <div className="overflow-x-auto rounded-lg border border-stone-800">
               <table className="w-full text-left text-xs">
-                <thead className="bg-stone-950/70 text-[10px] uppercase tracking-wider text-stone-500">
+                <thead className="bg-stone-800/50 text-[10px] uppercase tracking-wider text-stone-300">
                   <tr>
                     <th className="px-2 py-1.5 font-semibold">Parameter</th>
                     <th className="px-2 py-1.5 font-semibold">Observed</th>

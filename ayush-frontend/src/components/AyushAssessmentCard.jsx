@@ -6,7 +6,7 @@ import { AYUSH_PILLARS } from '../utils/ayushPillars';
  */
 export default function AyushAssessmentCard({ idPrefix, value, aiValue, onChange, correlation }) {
   return (
-    <section className="h-full rounded-xl bg-stone-900/90 border border-amber-600/40 p-3.5 flex flex-col gap-3">
+    <section className="h-full card-surface rounded-xl bg-stone-900/90 border border-amber-600/40 p-3.5 flex flex-col gap-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[15px]">spa</span>

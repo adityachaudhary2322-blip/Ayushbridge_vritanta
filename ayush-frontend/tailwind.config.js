@@ -1,70 +1,136 @@
+import palette from 'tailwindcss/colors';
+import plugin from 'tailwindcss/plugin';
+
+/*
+ * VRRTANT dual-palette theme: "Aged Sheesham & Espresso" (html.dark) and
+ * "Bhojpatra Parchment & Ayur-Linen" (light).
+ *
+ * Components are written dark-first with plain Tailwind classes (bg-stone-900,
+ * text-amber-500, bg-emerald-700 …). Instead of adding a `dark:` twin to every class,
+ * each of those colour scales resolves through a CSS variable:
+ *   - dark  → Tailwind's own shade (so the dark theme is exactly what is designed)
+ *   - light → a readable counterpart on ivory, chosen per shade below
+ * The design tokens (surface, primary …) follow the same mechanism.
+ * ThemeContext toggles `html.dark`; the pre-paint script in index.html sets it first.
+ */
+
+const SHADES = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'];
+
+// Neutral stone flips end to end: canvas ↔ ink, cards ↔ headings.
+const STONE_LIGHT = {
+  50: '#0c0a09', 100: '#1c1917', 200: '#292524', 300: '#44403c', 400: '#57534e', 500: '#78716c',
+  600: '#a8a29e', 700: '#d6d3d1', 800: '#e7e5e4', 900: '#ffffff', 950: '#faf8f5',
+};
+const STONE_DARK = { ...palette.stone, 950: '#0f0d0b' };
+
+// Accents in dark-first code: 100–500 are text on dark → deep shades on ivory;
+// 600–800 are fills/borders → stay deep; 900–950 are dark tints → pale washes.
+const ACCENT_LIGHT_SHADE = {
+  50: '950', 100: '900', 200: '800', 300: '800', 400: '700', 500: '700',
+  600: '700', 700: '800', 800: '800', 900: '100', 950: '50',
+};
+const ACCENTS = ['amber', 'emerald', 'rose', 'orange', 'sky', 'violet', 'red', 'green', 'teal'];
+
+// Semantic tokens used by the modals and secondary screens: [dark, light].
+const TOKENS = {
+  primary: ['#059669', '#047857'],
+  'on-primary': ['#ffffff', '#ffffff'],
+  'primary-container': ['#047857', '#065f46'],
+  'on-primary-container': ['#d1fae5', '#d1fae5'],
+  'primary-fixed': ['#064e3b', '#d1fae5'],
+  'primary-fixed-dim': ['#34d399', '#6ee7b7'],
+  'on-primary-fixed': ['#d1fae5', '#022c22'],
+  'on-primary-fixed-variant': ['#6ee7b7', '#065f46'],
+  'inverse-primary': ['#047857', '#6ee7b7'],
+  'surface-tint': ['#059669', '#047857'],
+
+  secondary: ['#f59e0b', '#92400e'],
+  'on-secondary': ['#1c1917', '#ffffff'],
+  'secondary-container': ['#451a03', '#fef3c7'],
+  'on-secondary-container': ['#fcd34d', '#78350f'],
+  'secondary-fixed': ['#3b2208', '#fef3c7'],
+  'secondary-fixed-dim': ['#d97706', '#fcd34d'],
+  'on-secondary-fixed': ['#fef3c7', '#451a03'],
+  'on-secondary-fixed-variant': ['#fcd34d', '#92400e'],
+
+  tertiary: ['#8fb996', '#3f6b4a'],
+  'on-tertiary': ['#0f0d0b', '#ffffff'],
+  'tertiary-container': ['#1f3a2b', '#dcebdd'],
+  'on-tertiary-container': ['#c7e3cc', '#1f3a2b'],
+  'tertiary-fixed': ['#1f3a2b', '#dcebdd'],
+  'tertiary-fixed-dim': ['#8fb996', '#8fb996'],
+  'on-tertiary-fixed': ['#dcfce7', '#0f2417'],
+  'on-tertiary-fixed-variant': ['#bbf7d0', '#2f5639'],
+
+  error: ['#f87171', '#b91c1c'],
+  'on-error': ['#1c1917', '#ffffff'],
+  'error-container': ['#4c0519', '#ffe4e6'],
+  'on-error-container': ['#fecdd3', '#881337'],
+
+  background: ['#0f0d0b', '#faf8f5'],
+  'on-background': ['#f5f5f4', '#1c1917'],
+  surface: ['#0f0d0b', '#faf8f5'],
+  'surface-bright': ['#292524', '#ffffff'],
+  'surface-dim': ['#0c0a09', '#e7e5e4'],
+  'surface-container-lowest': ['#1c1917', '#ffffff'],
+  'surface-container-low': ['#231f1c', '#f5f2ec'],
+  'surface-container': ['#292524', '#efebe4'],
+  'surface-container-high': ['#312c28', '#e9e4db'],
+  'surface-container-highest': ['#44403c', '#ded8cc'],
+  'surface-variant': ['#292524', '#efebe4'],
+  'on-surface': ['#f5f5f4', '#1c1917'],
+  'on-surface-variant': ['#a8a29e', '#57534e'],
+  outline: ['#78716c', '#78716c'],
+  'outline-variant': ['#44403c', '#d6d3d1'],
+  'inverse-surface': ['#e7e5e4', '#292524'],
+  'inverse-on-surface': ['#1c1917', '#fafaf9'],
+};
+
+const channels = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
+};
+const rgbVar = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
+const colors = {};
+const lightVars = {};
+const darkVars = {};
+
+colors.stone = {};
+for (const s of SHADES) {
+  colors.stone[s] = rgbVar(`stone-${s}`);
+  lightVars[`--stone-${s}`] = channels(STONE_LIGHT[s]);
+  darkVars[`--stone-${s}`] = channels(STONE_DARK[s]);
+}
+for (const accent of ACCENTS) {
+  colors[accent] = {};
+  for (const s of SHADES) {
+    colors[accent][s] = rgbVar(`${accent}-${s}`);
+    lightVars[`--${accent}-${s}`] = channels(palette[accent][ACCENT_LIGHT_SHADE[s]]);
+    darkVars[`--${accent}-${s}`] = channels(palette[accent][s]);
+  }
+}
+for (const [name, [dark, light]] of Object.entries(TOKENS)) {
+  colors[name] = rgbVar(`c-${name}`);
+  lightVars[`--c-${name}`] = channels(light);
+  darkVars[`--c-${name}`] = channels(dark);
+}
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   darkMode: 'class',
+  plugins: [
+    plugin(({ addBase }) => {
+      addBase({
+        ':root': { ...lightVars, colorScheme: 'light' },
+        '.dark': { ...darkVars, colorScheme: 'dark' },
+      });
+    }),
+  ],
   theme: {
     extend: {
-      // Ayurvedic Clinical HealthOS palette (dark foundation). Every component reads these
-      // tokens, so the whole platform's colour architecture lives here:
-      //   surfaces  = warm espresso / sheesham stone — canvas #0f0d0b, cards stone-900
-      //   primary   = healing forest sage / emerald (clinical commits, balanced states)
-      //   secondary = burnished brass / saffron (clinical headers, markers, priority)
-      //   tertiary  = muted sage (supporting accent)
-      //   on-*      = parchment & ivory text (stone-100 / stone-400)
-      // Surface steps get LIGHTER as they nest: canvas < lowest (cards) < low < … < highest.
-      colors: {
-        primary: '#059669',
-        'on-primary': '#ffffff',
-        'primary-container': '#047857',
-        'on-primary-container': '#d1fae5',
-        'primary-fixed': '#064e3b',
-        'primary-fixed-dim': '#34d399',
-        'on-primary-fixed': '#d1fae5',
-        'on-primary-fixed-variant': '#6ee7b7',
-        'inverse-primary': '#047857',
-        'surface-tint': '#059669',
-
-        secondary: '#f59e0b',
-        'on-secondary': '#1c1917',
-        'secondary-container': '#451a03',
-        'on-secondary-container': '#fcd34d',
-        'secondary-fixed': '#3b2208',
-        'secondary-fixed-dim': '#d97706',
-        'on-secondary-fixed': '#fef3c7',
-        'on-secondary-fixed-variant': '#fcd34d',
-
-        tertiary: '#8fb996',
-        'on-tertiary': '#0f0d0b',
-        'tertiary-container': '#1f3a2b',
-        'on-tertiary-container': '#c7e3cc',
-        'tertiary-fixed': '#1f3a2b',
-        'tertiary-fixed-dim': '#8fb996',
-        'on-tertiary-fixed': '#dcfce7',
-        'on-tertiary-fixed-variant': '#bbf7d0',
-
-        error: '#f87171',
-        'on-error': '#1c1917',
-        'error-container': '#4c0519',
-        'on-error-container': '#fecdd3',
-
-        background: '#0f0d0b',
-        'on-background': '#f5f5f4',
-        surface: '#0f0d0b',
-        'surface-bright': '#292524',
-        'surface-dim': '#0c0a09',
-        'surface-container-lowest': '#1c1917',
-        'surface-container-low': '#231f1c',
-        'surface-container': '#292524',
-        'surface-container-high': '#312c28',
-        'surface-container-highest': '#44403c',
-        'surface-variant': '#292524',
-        'on-surface': '#f5f5f4',
-        'on-surface-variant': '#a8a29e',
-        outline: '#78716c',
-        'outline-variant': '#44403c',
-        'inverse-surface': '#e7e5e4',
-        'inverse-on-surface': '#1c1917',
-      },
+      colors,
       borderRadius: {
         DEFAULT: '0.25rem',
         lg: '0.5rem',
@@ -117,5 +183,4 @@ export default {
       },
     },
   },
-  plugins: [],
 }

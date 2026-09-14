@@ -59,7 +59,7 @@ export default function AuthPortal({ onNavigate }) {
               </div>
               <div>
                 <div className="flex items-center gap-2.5">
-                  <h1 className="font-headline-md text-headline-md text-on-surface tracking-tight">AYUSH CareBridge</h1>
+                  <h1 className="font-headline-md text-headline-md text-on-surface tracking-tight">VRRTANT <span className="font-serif">वृत्तान्त</span></h1>
                   <span className="px-2 py-0.5 rounded-full bg-emerald-700 text-white font-label-sm text-label-sm">M2 Ready</span>
                 </div>
                 <p className="font-body-md text-body-md text-on-surface-variant mt-0.5">Integrative AI Triage &amp; Clinical Intake Portal</p>

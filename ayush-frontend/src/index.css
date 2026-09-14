@@ -2,17 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme variables (:root = Bhojpatra light, .dark = Sheesham dark) are injected by the
+   plugin in tailwind.config.js. */
+
 @layer base {
   html, body { margin: 0; padding: 0; }
-  html { color-scheme: dark; }
-  body { overscroll-behavior: none; background-color: #0f0d0b; }
+  body { overscroll-behavior: none; background-color: rgb(var(--stone-950)); color: rgb(var(--stone-100)); }
   ::-webkit-scrollbar { display: none; }
-  /* Native selects/options inherit the dark canvas instead of flashing white. */
-  select option { background-color: #1c1917; color: #f5f5f4; }
+  /* Native selects/options follow the active theme instead of flashing the OS default. */
+  select option { background-color: rgb(var(--stone-900)); color: rgb(var(--stone-100)); }
 }
+
+/* Applied by ThemeContext for ~250ms while switching, so cards and canvases cross-fade
+   without leaving a permanent transition on every element. */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: 200ms !important;
+  transition-timing-function: ease !important;
+}
+
+/* Light theme: linen cards get a whisper of shadow so they lift off the ivory canvas. */
+html:not(.dark) .card-surface { box-shadow: 0 1px 2px rgb(28 25 23 / 0.06); }
 
 /* Parchment question card — warm, lightly lit panel for spoken prompts. */
 .parchment-card {
-  background: linear-gradient(180deg, rgba(120, 83, 34, 0.14), rgba(28, 25, 23, 0.9));
-  border: 1px solid rgba(217, 119, 6, 0.35);
+  background: linear-gradient(180deg, rgb(var(--amber-900) / 0.18), rgb(var(--stone-900) / 0.92));
+  border: 1px solid rgb(var(--amber-600) / 0.35);
+}
+
+/* Print & PDF always use clinical light styling (ThemeContext also drops .dark on beforeprint). */
+@media print {
+  html { color-scheme: light; }
+  *, *::before, *::after { transition: none !important; }
 }

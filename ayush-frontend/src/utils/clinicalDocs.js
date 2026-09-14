@@ -9,9 +9,11 @@
 
 export const LAB_FLAG_STYLE = {
   // CRITICAL pulses on screen so it cannot be missed in a busy queue.
-  // Ruby → warm amber-red → muted amber → forest sage. Tuned for the dark stone canvas.
+  // Ruby → rose → muted amber → forest sage. Colour scales are theme variables, so each
+  // chip reads as a dark tint on Sheesham and as a pastel with dark text on Bhojpatra
+  // (e.g. HIGH → rose-100 wash, rose-800 text, rose-300-weight ring).
   CRITICAL: { chip: 'bg-rose-700 text-white animate-pulse ring-2 ring-rose-500/70', print: '#9f1239', label: 'CRITICAL' },
-  HIGH: { chip: 'bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/40', print: '#c2410c', label: 'HIGH' },
+  HIGH: { chip: 'bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/40', print: '#be123c', label: 'HIGH' },
   LOW: { chip: 'bg-amber-500/10 text-amber-300/90 ring-1 ring-amber-600/40', print: '#b45309', label: 'LOW' },
   NORMAL: { chip: 'bg-emerald-600/15 text-emerald-400 ring-1 ring-emerald-600/30', print: '#047857', label: 'NORMAL' },
 };

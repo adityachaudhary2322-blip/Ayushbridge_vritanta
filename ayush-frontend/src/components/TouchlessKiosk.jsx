@@ -5,6 +5,7 @@ import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam'
 import { KIOSK_LANGUAGES, DEFAULT_KIOSK_LANG, uiVariant, languageNative } from '../utils/languages';
 import { speechFor } from '../utils/kioskSpeech';
 import { cleanUtterance } from '../utils/utterance';
+import { BrandMark, OfficialStrip, ThemeToggle } from './Brand';
 
 const DOC_TYPE_PILL = {
   PRESCRIPTION: '📄 Prescription',
@@ -40,7 +41,7 @@ const STAGE_LABEL = {
 const PRIORITY_CONFIG = {
   P1: { bg: 'bg-rose-800', label: 'Critical', icon: 'emergency' },
   P2: { bg: 'bg-amber-700', label: 'Urgent', icon: 'priority_high' },
-  P3: { bg: 'bg-stone-700', label: 'Moderate', icon: 'schedule' },
+  P3: { bg: 'bg-[#57534e]', label: 'Moderate', icon: 'schedule' },
   P4: { bg: 'bg-emerald-800', label: 'Routine', icon: 'check_circle' },
 };
 
@@ -409,22 +410,15 @@ export default function TouchlessKiosk() {
   const listening = botStatus === 'listening';
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0f0d0b] text-stone-100">
+    <div className="min-h-screen flex flex-col bg-stone-950 text-stone-100">
 
       {/* Top bar */}
-      <header className="sticky top-0 z-20 border-b border-stone-800 bg-stone-950/85 backdrop-blur-md">
-        <div className="h-0.5 bg-gradient-to-r from-amber-600/80 via-amber-500/40 to-emerald-700/80" />
-        <div className="w-full px-4 sm:px-8 h-16 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="w-9 h-9 shrink-0 rounded-full border border-amber-600/50 bg-amber-500/10 text-amber-500 flex items-center justify-center">
-            <span className="material-symbols-outlined text-[20px]">spa</span>
-          </span>
-          <div className="leading-tight min-w-0">
-            <div className="text-sm font-semibold text-stone-100 truncate">AyushBridge MediKiosk · Voice AI</div>
-            <div className="font-serif text-[12px] text-stone-400 truncate">आवाज आधारित कियोस्क · Touchless Triage</div>
-          </div>
-        </div>
+      <header className="sticky top-0 z-20 bg-stone-950/85 backdrop-blur-md">
+        <OfficialStrip />
+        <div className="w-full border-b border-stone-800 px-4 sm:px-8 h-16 flex items-center justify-between gap-3">
+        <BrandMark context="Voice AI Clinical Kiosk · आवाज आधारित कियोस्क" />
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-600/40 px-3 py-1.5 text-sm text-amber-300">
             <span className="material-symbols-outlined text-[16px]">translate</span>
             <span className="font-serif">{languageNative(selectedLang)}</span>
@@ -459,9 +453,9 @@ export default function TouchlessKiosk() {
                   )}
                   {/* Countdown ring: fills over the 1-second silence window */}
                   <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
-                    <circle cx="50" cy="50" r="46" fill="none" stroke="#292524" strokeWidth="2" />
+                    <circle cx="50" cy="50" r="46" fill="none" className="stroke-stone-800" strokeWidth="2" />
                     {listening && (
-                      <circle cx="50" cy="50" r="46" fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round"
+                      <circle cx="50" cy="50" r="46" fill="none" className="stroke-emerald-500" strokeWidth="2.5" strokeLinecap="round"
                         strokeDasharray={`${(silenceProgress * 289).toFixed(1)} 289`} style={{ transition: 'stroke-dasharray 100ms linear' }} />
                     )}
                   </svg>

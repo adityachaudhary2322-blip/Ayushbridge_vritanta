@@ -77,7 +77,7 @@ export default function DiagnosisRxPanel({
   const signed = saved || !!patient?.consultation?.signedAt;
 
   return (
-    <section className="rounded-xl bg-stone-900/90 border border-stone-800">
+    <section className="card-surface rounded-xl bg-stone-900/90 border border-stone-800">
       <header className="px-4 py-2.5 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[16px]">prescriptions</span>
@@ -121,7 +121,7 @@ export default function DiagnosisRxPanel({
           </div>
           <div className="overflow-x-auto rounded-lg border border-stone-800">
             <table className="w-full text-left text-sm min-w-[760px]">
-              <thead className="bg-stone-950/70 text-[11px] uppercase tracking-wider text-stone-400">
+              <thead className="bg-stone-800/50 text-[11px] uppercase tracking-wider text-stone-300">
                 <tr>
                   <th className="px-2.5 py-2 font-semibold w-[26%]">Medicine Name</th>
                   <th className="px-2.5 py-2 font-semibold w-[13%]">Form</th>

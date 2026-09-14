@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { sarvamTTS, recordUntilSilence, stopSarvamAudio } from '../utils/sarvam';
 import { TELECONSULT_LANGUAGES, coerceTeleconsultLang, uiVariant } from '../utils/languages';
+import { BrandMark, OfficialStrip, ThemeToggle } from './Brand';
 
 const STAGES = ['name', 'ageGender', 'complaint', 'has_documents', 'agni', 'sleep', 'energy', 'history'];
 
@@ -49,7 +50,7 @@ const TELE_CHIPS = {
 const PRIORITY_CONFIG = {
   P1: { bg: 'bg-rose-800', label: 'Critical', icon: 'emergency' },
   P2: { bg: 'bg-amber-700', label: 'Urgent', icon: 'priority_high' },
-  P3: { bg: 'bg-stone-700', label: 'Moderate', icon: 'schedule' },
+  P3: { bg: 'bg-[#57534e]', label: 'Moderate', icon: 'schedule' },
   P4: { bg: 'bg-emerald-800', label: 'Routine', icon: 'check_circle' },
 };
 
@@ -471,24 +472,27 @@ export default function TeleConsultRoom() {
   const stageIdx = STAGES.indexOf(stage);
 
   return (
-    <div className="min-h-screen bg-stone-900 text-white flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col relative overflow-hidden">
 
       <style>{`
         @keyframes call-wave { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
       `}</style>
 
       {/* Top status bar */}
-      <div className="h-0.5 w-full bg-gradient-to-r from-amber-600/80 via-amber-500/40 to-emerald-700/80" />
-      <div className="flex items-center justify-between gap-2 px-4 sm:px-6 h-14 bg-stone-950/80 backdrop-blur-sm border-b-2 border-amber-500">
-        <div className="flex items-center gap-2.5 min-w-0">
+      <OfficialStrip />
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 h-16 bg-stone-950/80 backdrop-blur-sm border-b border-stone-800">
+        <div className="flex items-center gap-3 min-w-0">
+          <BrandMark compact />
+          <span className="hidden sm:block w-px h-8 bg-stone-800" aria-hidden="true" />
           <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${onHold ? 'bg-amber-400' : 'bg-green-500 animate-pulse'}`} />
-          <span className="font-label-md text-label-md text-amber-400 truncate">📞 Telephony Voice Consultation · <span className="text-white/90">Line {room}</span></span>
+          <span className="font-label-md text-label-md text-amber-400 truncate">📞 Telephony Voice Consultation · <span className="text-stone-200">Line {room}</span></span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <ThemeToggle />
           {phase !== 'waiting' && phase !== 'admitted' && (
             <>
-              <span className="px-2.5 py-1 rounded-full bg-white/10 font-label-sm text-label-sm text-white/80 tabular-nums">{formatDuration(callSeconds)}</span>
-              <span className="hidden sm:inline px-2.5 py-1 rounded-full bg-white/10 font-label-sm text-label-sm text-white/80">{lang === 'hi' ? 'हिंदी' : 'English'}</span>
+              <span className="px-2.5 py-1 rounded-full bg-stone-800/70 font-label-sm text-label-sm text-stone-300 tabular-nums">{formatDuration(callSeconds)}</span>
+              <span className="hidden sm:inline px-2.5 py-1 rounded-full bg-stone-800/70 font-label-sm text-label-sm text-stone-300">{lang === 'hi' ? 'हिंदी' : 'English'}</span>
             </>
           )}
         </div>
@@ -508,7 +512,7 @@ export default function TeleConsultRoom() {
               </>
             )}
             <div className={`relative w-28 h-28 rounded-full flex items-center justify-center shadow-2xl transition-all ${
-              onHold ? 'bg-amber-600/80' : speaking ? 'bg-primary scale-105' : listening ? 'bg-tertiary/80' : botStatus === 'thinking' ? 'bg-secondary/70' : 'bg-stone-700'}`}>
+              onHold ? 'bg-amber-700' : speaking ? 'bg-emerald-700 scale-105' : listening ? 'bg-emerald-600' : botStatus === 'thinking' ? 'bg-amber-700' : 'bg-[#57534e]'}`}>
               <span className="material-symbols-outlined text-[52px] text-white">
                 {onHold ? 'phone_paused' : speaking ? 'record_voice_over' : listening ? 'hearing' : botStatus === 'thinking' ? 'psychology' : 'call'}
               </span>
@@ -546,8 +550,8 @@ export default function TeleConsultRoom() {
           {/* Live subtitles */}
           <div className="w-full flex flex-col gap-2 items-center min-h-[96px]">
             {caption && (
-              <div className="max-w-xl bg-black/50 rounded-xl px-4 py-2.5 text-center">
-                <p className="font-body-md text-body-md text-white">{caption}</p>
+              <div className="max-w-xl bg-stone-950/70 border border-stone-800 rounded-xl px-4 py-2.5 text-center">
+                <p className="font-body-md text-body-md text-stone-100">{caption}</p>
               </div>
             )}
             {transcript && (
@@ -576,24 +580,24 @@ export default function TeleConsultRoom() {
                 </button>
               ))}
             </div>
-            <p className="font-label-md text-label-md text-white/70">{lang === 'hi' ? 'बोलें या दबाएं' : 'Press or say 1 / 2'}</p>
+            <p className="font-label-md text-label-md text-stone-400">{lang === 'hi' ? 'बोलें या दबाएं' : 'Press or say 1 / 2'}</p>
           </div>
         )}
 
         {/* Interview progress */}
         {phase === 'interview' && (
-          <div className="absolute top-4 left-1/2 -transtone-x-1/2 flex items-center gap-2">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
             {STAGES.map((s, i) => (
               <div key={s} className={`h-2 rounded-full transition-all ${i < stageIdx ? 'w-6 bg-emerald-600' : i === stageIdx ? 'w-6 bg-amber-500' : 'w-2 bg-stone-700'}`} />
             ))}
-            <span className="ml-2 font-label-sm text-label-sm text-white/70">{STAGE_LABEL[stage][lang]}</span>
+            <span className="ml-2 font-label-sm text-label-sm text-stone-400">{STAGE_LABEL[stage][lang]}</span>
           </div>
         )}
 
         {/* Distinct voice-service error banner (click to retry) */}
         {voiceError && (
           <button onClick={retryVoice}
-            className="absolute top-14 left-1/2 -transtone-x-1/2 max-w-lg text-left bg-red-600/90 text-white rounded-xl px-4 py-2.5 font-body-sm text-body-sm flex items-start gap-2 hover:bg-red-700/90 transition-colors">
+            className="absolute top-14 left-1/2 -translate-x-1/2 max-w-lg text-left bg-red-600/90 text-white rounded-xl px-4 py-2.5 font-body-sm text-body-sm flex items-start gap-2 hover:bg-red-700/90 transition-colors">
             <span className="material-symbols-outlined text-[18px] shrink-0 mt-0.5">error</span>
             <span>{voiceError} <span className="underline">{lang === 'hi' ? 'पुनः प्रयास' : 'Retry'}</span></span>
           </button>
@@ -608,7 +612,7 @@ export default function TeleConsultRoom() {
                   <span className="material-symbols-outlined text-[22px]">description</span>
                   {lang === 'hi' ? '📄 हाँ, पर्ची स्कैन करें' : '📄 Yes, Scan Document'}
                 </button>
-                <button onClick={docNo} className="px-5 py-3.5 rounded-2xl bg-white/15 text-white font-title-md text-title-md backdrop-blur-sm hover:bg-white/25 transition-colors flex items-center gap-2">
+                <button onClick={docNo} className="px-5 py-3.5 rounded-2xl bg-stone-800 text-stone-100 font-title-md text-title-md backdrop-blur-sm hover:bg-stone-700 transition-colors flex items-center gap-2">
                   <span className="material-symbols-outlined text-[22px]">skip_next</span>
                   {lang === 'hi' ? '⏭️ नहीं, आगे बढ़ें' : '⏭️ No, Skip & Continue'}
                 </button>
@@ -658,7 +662,7 @@ export default function TeleConsultRoom() {
               <div className="flex flex-wrap items-center justify-center gap-2 max-w-2xl">
                 {(TELE_CHIPS[stage][lang] || TELE_CHIPS[stage].en).map(chip => (
                   <button key={chip} onClick={() => acceptAnswer(stage, chip)}
-                    className="px-3.5 py-2 rounded-full bg-white/15 hover:bg-emerald-700 hover:text-white text-white font-label-md text-label-md backdrop-blur-sm transition-colors">
+                    className="px-3.5 py-2 rounded-full bg-stone-800 hover:bg-emerald-700 hover:text-white text-stone-100 font-label-md text-label-md backdrop-blur-sm transition-colors">
                     {chip}
                   </button>
                 ))}
@@ -682,26 +686,26 @@ export default function TeleConsultRoom() {
         {/* Waiting room overlay */}
         {(phase === 'waiting' || phase === 'admitted') && (
           <div className="absolute inset-0 bg-stone-950/90 backdrop-blur-sm flex items-center justify-center z-20">
-            <div className="bg-stone-800 rounded-3xl shadow-2xl px-10 py-12 flex flex-col items-center gap-5 ring-1 ring-white/10 max-w-md text-center">
+            <div className="bg-stone-800 rounded-3xl shadow-2xl px-10 py-12 flex flex-col items-center gap-5 border border-stone-700 max-w-md text-center">
               <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center">
                 <span className="material-symbols-outlined text-primary text-[36px]">stethoscope</span>
               </div>
               {phase === 'waiting' ? (
                 <>
-                  <h2 className="font-headline-sm text-headline-sm text-white font-semibold">Connecting to Dr. AYUSH AI Vaidya…</h2>
+                  <h2 className="font-headline-sm text-headline-sm text-stone-100 font-semibold">Connecting to Dr. AYUSH AI Vaidya…</h2>
                   <div className="relative w-28 h-28 flex items-center justify-center">
                     <div className="absolute inset-0 rounded-full bg-primary/15 animate-ping" />
                     <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center">
                       <span className="font-headline-lg text-headline-lg text-primary font-bold text-[56px]">{countdown}</span>
                     </div>
                   </div>
-                  <p className="font-body-md text-body-md text-white/70">Please wait in the consultation room…</p>
+                  <p className="font-body-md text-body-md text-stone-400">Please wait in the consultation room…</p>
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-primary text-[52px]">check_circle</span>
-                  <h2 className="font-headline-sm text-headline-sm text-white font-semibold">Host admitted you to the consultation</h2>
-                  <p className="font-body-md text-body-md text-white/70">Starting your session…</p>
+                  <h2 className="font-headline-sm text-headline-sm text-stone-100 font-semibold">Host admitted you to the consultation</h2>
+                  <p className="font-body-md text-body-md text-stone-400">Starting your session…</p>
                 </>
               )}
             </div>
@@ -734,7 +738,7 @@ export default function TeleConsultRoom() {
             <span className="material-symbols-outlined text-amber-400 text-[20px]">clinical_notes</span>
             <span className="font-title-md text-title-md text-amber-400 font-semibold">Doctor Clinical Notes</span>
           </div>
-          <dl className="flex flex-col gap-1.5 rounded-xl bg-white/5 p-3 font-body-sm text-body-sm">
+          <dl className="flex flex-col gap-1.5 rounded-xl bg-stone-800/40 p-3 font-body-sm text-body-sm">
             {[
               ['Name', fields.name],
               ['Age / Gender', [fields.age, fields.gender].filter(Boolean).join(' / ')],
@@ -745,22 +749,22 @@ export default function TeleConsultRoom() {
               ['Purva Vyadhi', fields.chronic_history],
             ].map(([k, v]) => (
               <div key={k} className="flex gap-2">
-                <dt className="w-28 shrink-0 text-white/50">{k}</dt>
-                <dd className="text-white/90 break-words min-w-0">{v || '—'}</dd>
+                <dt className="w-28 shrink-0 text-stone-500">{k}</dt>
+                <dd className="text-stone-200 break-words min-w-0">{v || '—'}</dd>
               </div>
             ))}
           </dl>
           <label className="flex flex-col gap-1.5">
-            <span className="font-label-sm text-label-sm text-white/60 uppercase tracking-wide">Physician notes</span>
+            <span className="font-label-sm text-label-sm text-stone-400 uppercase tracking-wide">Physician notes</span>
             <textarea
               rows={6}
               value={callNotes}
               disabled={phase === 'complete'}
               onChange={(e) => { setCallNotes(e.target.value); callNotesRef.current = e.target.value; }}
               placeholder="Voice quality, patient's tone, observations to verify at OPD…"
-              className="w-full rounded-xl bg-white/10 px-3 py-2 font-body-sm text-body-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+              className="w-full rounded-xl bg-stone-950 border border-stone-700 px-3 py-2 font-body-sm text-body-sm text-stone-100 placeholder:text-stone-600 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
             />
-            <span className="font-label-sm text-label-sm text-white/40">
+            <span className="font-label-sm text-label-sm text-stone-500">
               {phase === 'complete' ? 'Saved with the patient record.' : 'Saved with the patient record when the call summary is generated.'}
             </span>
           </label>
@@ -770,7 +774,7 @@ export default function TeleConsultRoom() {
 
       {/* Bottom audio call controls */}
       {!triageResult && phase !== 'waiting' && phase !== 'admitted' && (
-        <div className="flex flex-col items-center gap-2 py-4 border-t border-white/10 bg-stone-950/70">
+        <div className="flex flex-col items-center gap-2 py-4 border-t border-stone-800 bg-stone-950/70">
           <div className="flex flex-wrap items-start justify-center gap-4 sm:gap-6">
             <CallControl
               icon={muted ? 'mic_off' : 'mic'}
@@ -794,7 +798,7 @@ export default function TeleConsultRoom() {
             />
             <CallControl icon="call_end" label="End Call" danger onClick={endCall} />
           </div>
-          <p className="font-label-sm text-label-sm text-white/50">फोन कान पर लगाकर बात करें / Hold phone near ear</p>
+          <p className="font-label-sm text-label-sm text-stone-500">फोन कान पर लगाकर बात करें / Hold phone near ear</p>
         </div>
       )}
     </div>
@@ -816,10 +820,10 @@ function CallControl({ icon, label, onClick, active = false, danger = false, dis
       <span className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-colors ${
         danger ? 'bg-red-600 group-hover:bg-red-700 text-white'
           : active ? 'bg-amber-500 text-stone-950'
-          : 'bg-white/15 group-hover:bg-white/25 text-white'}`}>
+          : 'bg-stone-800 group-hover:bg-stone-700 text-stone-100'}`}>
         <span className="material-symbols-outlined text-[26px]">{icon}</span>
       </span>
-      <span className="font-label-sm text-label-sm text-white/80">{label}</span>
+      <span className="font-label-sm text-label-sm text-stone-300">{label}</span>
     </button>
   );
 }

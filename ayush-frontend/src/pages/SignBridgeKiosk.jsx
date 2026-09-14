@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BrandMark, OfficialStrip, ThemeToggle } from '../components/Brand';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   SignVision, HAND_SHAPES, shapeLabel, createSmoother, drawHand, clearCanvas,
@@ -393,21 +394,25 @@ export default function SignBridgeKiosk() {
   const liveShape = live?.shape;
 
   return (
-    <div className="min-h-screen bg-[#0f0d0b] text-stone-100 flex flex-col">
+    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col">
 
       {/* ── Header ── */}
-      <header className="w-full px-4 sm:px-6 h-16 flex items-center justify-between border-b border-stone-800 bg-stone-950/85 backdrop-blur-md sticky top-0 z-20">
+      <header className="sticky top-0 z-20 bg-stone-950/85 backdrop-blur-md">
+        <OfficialStrip />
+        <div className="w-full px-4 sm:px-6 h-16 flex items-center justify-between gap-3 border-b border-stone-800">
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => navigate('/')} className="w-10 h-10 rounded-xl bg-stone-800 hover:bg-stone-700 flex items-center justify-center shrink-0" aria-label="Home">
             <span className="material-symbols-outlined text-[22px]">home</span>
           </button>
-          <div className="w-10 h-10 rounded-full border border-amber-600/50 bg-amber-500/10 flex items-center justify-center text-[20px] shrink-0">🤟</div>
-          <div className="leading-tight min-w-0">
-            <p className="text-base sm:text-lg font-bold truncate">SignBridge · Divyang Jan</p>
-            <p className="font-serif text-xs text-amber-500/90 truncate">सांकेतिक भाषा त्रिआज · Beta</p>
+          <BrandMark compact />
+          <span className="hidden sm:block w-px h-8 bg-stone-800" aria-hidden="true" />
+          <div className="leading-tight min-w-0 hidden sm:block">
+            <p className="text-sm font-bold truncate">🤟 Divyang Jan Sign-Bridge</p>
+            <p className="font-serif text-xs text-amber-500/90 truncate">दिव्यांग जन सांकेतिक भाषा कियोस्क · Beta</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <button
             onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
             className="px-3 sm:px-4 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-base font-bold flex items-center gap-1.5"
@@ -423,6 +428,7 @@ export default function SignBridgeKiosk() {
             <span className="hidden sm:inline">{t('Reports', 'रिपोर्ट')}</span>
             {reports.length > 0 && <span className="px-1.5 rounded-full bg-stone-900 text-amber-400 text-sm">{reports.length}</span>}
           </button>
+        </div>
         </div>
       </header>
 
@@ -485,8 +491,8 @@ export default function SignBridgeKiosk() {
 
               {cameraOn && (
                 <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-2">
-                  <div className="rounded-xl bg-black/70 px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-widest text-stone-400 font-bold">{t('Your hand', 'आपका हाथ')}</p>
+                  <div className="rounded-xl bg-black/70 px-3 py-2 text-white">
+                    <p className="text-[10px] uppercase tracking-widest text-white/60 font-bold">{t('Your hand', 'आपका हाथ')}</p>
                     <p className="text-lg font-black leading-tight">
                       {liveShape ? `${HAND_SHAPES[liveShape].emoji} ${shapeLabel(liveShape, lang)}`
                         : handsVisible ? t('Hold a clear shape', 'स्पष्ट संकेत बनाएँ')
@@ -1025,7 +1031,7 @@ function SuccessScreen({ result, t, countdown, complaintObj, sleepObj, agniObj, 
   const token = result.id ? `AYUSH-${String(result.id).slice(-6).toUpperCase()}` : 'AYUSH-000000';
 
   return (
-    <div className="min-h-screen bg-[#0f0d0b] text-stone-100 flex flex-col items-center px-4 py-8 gap-6">
+    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col items-center px-4 py-8 gap-6">
       <div className="w-24 h-24 rounded-full bg-emerald-700 ring-4 ring-emerald-600/30 text-white flex items-center justify-center text-[52px] font-black">✓</div>
 
       <div className="text-center">
